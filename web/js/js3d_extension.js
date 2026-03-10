@@ -1,6 +1,8 @@
 import { app } from "../../../scripts/app.js";
 
 const VIEWER_NODES = ["JS3D_Load3DController", "JS3D_Preview3D"];
+const VIEWER_HEIGHT_LOADER = 680;
+const VIEWER_HEIGHT_PREVIEW = 550;
 
 function getExtensionBaseUrl() {
     try {
@@ -11,10 +13,30 @@ function getExtensionBaseUrl() {
 }
 
 function buildViewUrl(filePath) {
-    if (filePath.startsWith("/") || filePath.startsWith("http")) {
-        return filePath;
+    if (!filePath) return "";
+    if (filePath.startsWith("http")) return filePath;
+
+    let relPath = filePath;
+
+    if (filePath.startsWith("/") || /^[A-Z]:\\/.test(filePath)) {
+        const normalized = filePath.replace(/\\/g, "/");
+        const inputIdx = normalized.indexOf("/input/");
+        if (inputIdx >= 0) {
+            relPath = normalized.substring(inputIdx + 7);
+        } else {
+            const outputIdx = normalized.indexOf("/output/");
+            if (outputIdx >= 0) {
+                const afterOutput = normalized.substring(outputIdx + 8);
+                const parts = afterOutput.split("/");
+                const filename = parts.pop();
+                const subfolder = parts.join("/");
+                return `/view?filename=${encodeURIComponent(filename)}&type=output&subfolder=${encodeURIComponent(subfolder)}`;
+            }
+            relPath = normalized.split("/").pop();
+        }
     }
-    const parts = filePath.replace(/\\/g, "/").split("/");
+
+    const parts = relPath.replace(/\\/g, "/").split("/");
     const filename = parts.pop();
     const subfolder = parts.join("/");
     return `/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`;
@@ -27,6 +49,7 @@ app.registerExtension({
         if (!VIEWER_NODES.includes(nodeData.name)) return;
 
         const isLoader = nodeData.name === "JS3D_Load3DController";
+        const viewerHeight = isLoader ? VIEWER_HEIGHT_LOADER : VIEWER_HEIGHT_PREVIEW;
 
         const origOnCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function () {
@@ -35,7 +58,7 @@ app.registerExtension({
             const container = document.createElement("div");
             container.style.cssText = `
                 width: 100%;
-                height: 500px;
+                height: ${viewerHeight}px;
                 position: relative;
                 border-radius: 8px;
                 overflow: hidden;
@@ -54,6 +77,38 @@ app.registerExtension({
             const baseUrl = getExtensionBaseUrl();
             iframe.src = baseUrl + "/html/viewer3d.html";
             container.appendChild(iframe);
+
+            const resizeHandle = document.createElement("div");
+            resizeHandle.style.cssText = `
+                position: absolute; bottom: 0; left: 0; right: 0; height: 6px;
+                cursor: ns-resize; background: transparent; z-index: 200;
+            `;
+            resizeHandle.addEventListener("mouseenter", () => {
+                resizeHandle.style.background = "rgba(106,158,255,0.4)";
+            });
+            resizeHandle.addEventListener("mouseleave", () => {
+                resizeHandle.style.background = "transparent";
+            });
+            let startY = 0, startH = 0;
+            const onMouseMove = (e) => {
+                const newH = Math.max(300, startH + (e.clientY - startY));
+                container.style.height = newH + "px";
+                this.setSize?.([this.size[0], this.computeSize()[1]]);
+                app.graph?.setDirtyCanvas?.(true);
+            };
+            const onMouseUp = () => {
+                document.removeEventListener("mousemove", onMouseMove);
+                document.removeEventListener("mouseup", onMouseUp);
+            };
+            resizeHandle.addEventListener("mousedown", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                startY = e.clientY;
+                startH = container.offsetHeight;
+                document.addEventListener("mousemove", onMouseMove);
+                document.addEventListener("mouseup", onMouseUp);
+            });
+            container.appendChild(resizeHandle);
 
             const widget = this.addDOMWidget("js3d_viewer", "custom", container, {
                 serialize: false,
@@ -95,7 +150,7 @@ app.registerExtension({
 
             this._pollInterval = setInterval(() => {
                 self._tryLoadCurrentFile();
-            }, 1000);
+            }, 1500);
         };
 
         nodeType.prototype._tryLoadCurrentFile = function () {
@@ -149,6 +204,7 @@ app.registerExtension({
             if (!this._js3dIframe?.contentWindow) return;
 
             const fileUrl = buildViewUrl(filePath);
+            if (!fileUrl) return;
 
             this._js3dIframe.contentWindow.postMessage(
                 {

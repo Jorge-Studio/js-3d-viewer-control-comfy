@@ -35,10 +35,12 @@ canvas { display: block; width: 100%; height: 100%; }
 .panel-row select { background: #2a2a2a; color: #ccc; border: 1px solid #555; border-radius: 4px; padding: 2px 4px; font-size: 11px; }
 .panel-row .val { font-size: 10px; color: #666; min-width: 30px; text-align: right; }
 
-#gizmo-bar { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; z-index: 100; }
+#gizmo-bar { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; z-index: 100; background: rgba(15,15,15,0.8); padding: 4px 6px; border-radius: 8px; border: 1px solid #333; backdrop-filter: blur(6px); }
 #gizmo-bar .menu-btn { font-size: 13px; font-weight: 600; width: 32px; height: 32px; }
 
-#info-bar { position: absolute; bottom: 10px; right: 10px; font-size: 10px; color: #555; z-index: 50; text-align: right; line-height: 1.4; }
+#info-bar { position: absolute; bottom: 14px; right: 10px; font-size: 10px; color: #555; z-index: 50; text-align: right; line-height: 1.4; }
+
+#controls-hint { position: absolute; bottom: 14px; left: 10px; font-size: 9px; color: #444; z-index: 50; line-height: 1.3; }
 </style>
 </head>
 <body>
@@ -108,12 +110,13 @@ canvas { display: block; width: 100%; height: 100%; }
     </div>
 
     <div id="gizmo-bar">
-        <button class="menu-btn" id="gz-translate" title="Translate (T)">T</button>
+        <button class="menu-btn active" id="gz-translate" title="Translate (T)">T</button>
         <button class="menu-btn" id="gz-rotate" title="Rotate (R)">R</button>
         <button class="menu-btn" id="gz-scale" title="Scale (S)">S</button>
-        <button class="menu-btn active" id="gz-none" title="Orbit only (Q)">Q</button>
+        <button class="menu-btn" id="gz-none" title="Orbit only (Q)">Q</button>
     </div>
 
+    <div id="controls-hint">LMB: Orbit · RMB: Pan · Scroll: Zoom</div>
     <div id="info-bar">JS3D Viewer</div>
 </div>
 
@@ -504,7 +507,7 @@ function addModelToScene(object, opts = {}) {
     if (isGaussianSplat || isLargePointCloud) {
         setGizmoMode('none');
     } else {
-        setGizmoMode('none');
+        setGizmoMode('translate');
     }
 
     orbitControls.target.set(0, 0, 0);
