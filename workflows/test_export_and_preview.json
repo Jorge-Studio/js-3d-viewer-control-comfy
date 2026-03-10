@@ -21,7 +21,7 @@
         {"name": "height", "type": "INT", "links": [], "slot_index": 6}
       ],
       "properties": {"Node name for S&R": "JS3D_Load3DController"},
-      "widgets_values": ["3d/Heist-01__1773135961565.ply", 1024, 1024, ""],
+      "widgets_values": ["none", 1024, 1024, ""],
       "_meta": {"title": "Load 3D Controller"}
     },
     {
