@@ -12,6 +12,21 @@ function getExtensionBaseUrl() {
     }
 }
 
+async function resolveViewerUrl(htmlFile) {
+    const candidates = [
+        `/js3d/viewer/${htmlFile}`,
+        `${getExtensionBaseUrl()}/html/${htmlFile}`,
+        `/extensions/js-3d-viewer-control-comfy/html/${htmlFile}`,
+    ];
+    for (const url of candidates) {
+        try {
+            const r = await fetch(url, { method: "HEAD" });
+            if (r.ok) return url;
+        } catch (_) {}
+    }
+    return candidates[0];
+}
+
 function buildViewUrl(filePath) {
     if (!filePath) return "";
     if (filePath.startsWith("http")) return filePath;
@@ -184,8 +199,9 @@ app.registerExtension({
             `;
             iframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
 
-            const baseUrl = getExtensionBaseUrl();
-            iframe.src = baseUrl + "/html/viewer3d.html";
+            resolveViewerUrl("viewer3d.html").then((url) => {
+                iframe.src = url;
+            });
             container.appendChild(iframe);
 
             const resizeHandle = document.createElement("div");
@@ -228,7 +244,6 @@ app.registerExtension({
             this._js3dIframe = iframe;
             this._js3dContainer = container;
             this._js3dCurrentFile = null;
-            this._js3dBaseUrl = baseUrl;
             this._js3dSnapshotData = null;
 
             const self = this;
@@ -298,26 +313,22 @@ app.registerExtension({
             this._js3dCurrentFile = filePath;
 
             const ext = filePath.split(".").pop().toLowerCase();
-            const baseUrl = this._js3dBaseUrl;
 
-            let viewerUrl;
-            if (ext === "splat") {
-                viewerUrl = baseUrl + "/html/splat_viewer.html";
-            } else {
-                viewerUrl = baseUrl + "/html/viewer3d.html";
-            }
+            const htmlFile = ext === "splat" ? "splat_viewer.html" : "viewer3d.html";
 
             const currentSrc = this._js3dIframe.src || "";
-            const targetPage = viewerUrl.split("/").pop();
+            const targetPage = htmlFile;
             const needsSwitch = !currentSrc.includes(targetPage);
 
             if (needsSwitch) {
-                this._js3dIframe.src = viewerUrl;
-                this._js3dIframe.onload = () => {
-                    setTimeout(() => {
-                        this._sendLoadCommand(filePath, ext);
-                    }, 800);
-                };
+                resolveViewerUrl(htmlFile).then((url) => {
+                    this._js3dIframe.src = url;
+                    this._js3dIframe.onload = () => {
+                        setTimeout(() => {
+                            this._sendLoadCommand(filePath, ext);
+                        }, 800);
+                    };
+                });
             } else {
                 this._sendLoadCommand(filePath, ext);
             }
