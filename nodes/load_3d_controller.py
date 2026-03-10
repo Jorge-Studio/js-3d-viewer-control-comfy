@@ -46,8 +46,8 @@ class JS3D_Load3DController:
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "IMAGE", "STRING")
-    RETURN_NAMES = ("image", "mask", "mesh_path", "normal_map", "camera_info")
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "IMAGE", "STRING", "INT", "INT")
+    RETURN_NAMES = ("image", "mask", "mesh_path", "normal_map", "camera_info", "width", "height")
     FUNCTION = "execute"
     CATEGORY = "3d"
     DESCRIPTION = "Load a 3D model file and display an interactive viewer with gizmo controls."
@@ -72,13 +72,13 @@ class JS3D_Load3DController:
                 mask = _decode_base64_mask(data.get("mask", ""), width, height)
                 normal = _decode_base64_image(data.get("normal", ""), width, height)
                 cam = json.dumps(data.get("camera", {}))
-                return (image, mask, mesh_path, normal, cam)
+                return (image, mask, mesh_path, normal, cam, width, height)
             except Exception:
                 pass
 
         blank_img = torch.zeros(1, height, width, 3, dtype=torch.float32)
         blank_mask = torch.zeros(1, height, width, dtype=torch.float32)
-        return (blank_img, blank_mask, mesh_path, blank_img.clone(), "{}")
+        return (blank_img, blank_mask, mesh_path, blank_img.clone(), "{}", width, height)
 
 
 def _resolve_path(model_file):

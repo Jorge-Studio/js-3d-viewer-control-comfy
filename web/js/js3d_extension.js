@@ -10,6 +10,16 @@ function getExtensionBaseUrl() {
     }
 }
 
+function buildViewUrl(filePath) {
+    if (filePath.startsWith("/") || filePath.startsWith("http")) {
+        return filePath;
+    }
+    const parts = filePath.replace(/\\/g, "/").split("/");
+    const filename = parts.pop();
+    const subfolder = parts.join("/");
+    return `/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`;
+}
+
 app.registerExtension({
     name: "JS3D.ViewerControl",
 
@@ -111,13 +121,10 @@ app.registerExtension({
 
             const ext = filePath.split(".").pop().toLowerCase();
             const baseUrl = this._js3dBaseUrl;
-            const isSplat = ext === "splat";
 
             let viewerUrl;
-            if (isSplat) {
+            if (ext === "splat") {
                 viewerUrl = baseUrl + "/html/splat_viewer.html";
-            } else if (ext === "ply") {
-                viewerUrl = baseUrl + "/html/viewer3d.html";
             } else {
                 viewerUrl = baseUrl + "/html/viewer3d.html";
             }
@@ -131,7 +138,7 @@ app.registerExtension({
                 this._js3dIframe.onload = () => {
                     setTimeout(() => {
                         this._sendLoadCommand(filePath, ext);
-                    }, 500);
+                    }, 800);
                 };
             } else {
                 this._sendLoadCommand(filePath, ext);
@@ -141,12 +148,7 @@ app.registerExtension({
         nodeType.prototype._sendLoadCommand = function (filePath, ext) {
             if (!this._js3dIframe?.contentWindow) return;
 
-            let fileUrl;
-            if (filePath.startsWith("/") || filePath.startsWith("http")) {
-                fileUrl = filePath;
-            } else {
-                fileUrl = `/view?filename=${encodeURIComponent(filePath)}&type=input&subfolder=`;
-            }
+            const fileUrl = buildViewUrl(filePath);
 
             this._js3dIframe.contentWindow.postMessage(
                 {
