@@ -5,8 +5,8 @@
     {
       "id": 1,
       "type": "JS3D_Load3DController",
-      "pos": [100, 100],
-      "size": [400, 600],
+      "pos": [50, 50],
+      "size": [420, 750],
       "flags": {},
       "order": 0,
       "mode": 0,
@@ -21,13 +21,13 @@
         {"name": "height", "type": "INT", "links": [], "slot_index": 6}
       ],
       "properties": {"Node name for S&R": "JS3D_Load3DController"},
-      "widgets_values": ["none", 1024, 1024, ""],
+      "widgets_values": ["3d/Heist-01__1773135961565.ply", 1024, 1024, ""],
       "_meta": {"title": "Load 3D Controller"}
     },
     {
       "id": 2,
       "type": "LoadImage",
-      "pos": [100, 800],
+      "pos": [50, 850],
       "size": [315, 314],
       "flags": {},
       "order": 1,
@@ -39,12 +39,12 @@
       ],
       "properties": {"Node name for S&R": "LoadImage"},
       "widgets_values": ["example.png", "image"],
-      "_meta": {"title": "Load Image"}
+      "_meta": {"title": "Background Image"}
     },
     {
       "id": 3,
       "type": "JS3D_CompositeOnImage",
-      "pos": [600, 300],
+      "pos": [550, 400],
       "size": [350, 300],
       "flags": {},
       "order": 2,
@@ -64,8 +64,8 @@
     {
       "id": 4,
       "type": "PreviewImage",
-      "pos": [1050, 300],
-      "size": [300, 300],
+      "pos": [970, 400],
+      "size": [400, 400],
       "flags": {},
       "order": 3,
       "mode": 0,
@@ -75,7 +75,7 @@
       "outputs": [],
       "properties": {"Node name for S&R": "PreviewImage"},
       "widgets_values": [],
-      "_meta": {"title": "Preview Image"}
+      "_meta": {"title": "Composite Result"}
     }
   ],
   "links": [
@@ -87,10 +87,7 @@
   "groups": [],
   "config": {},
   "extra": {
-    "ds": {
-      "scale": 1.0,
-      "offset": [0, 0]
-    }
+    "ds": {"scale": 0.8, "offset": [0, 0]}
   },
   "version": 0.4
 }

@@ -233,6 +233,19 @@ app.registerExtension({
                             this._js3dCurrentFile = null;
                             this._tryLoadCurrentFile();
                         }
+                        if (info.camera_info && info.camera_info !== "{}") {
+                            const self = this;
+                            setTimeout(() => {
+                                try {
+                                    const cam = typeof info.camera_info === "string"
+                                        ? JSON.parse(info.camera_info) : info.camera_info;
+                                    self._js3dIframe?.contentWindow?.postMessage({
+                                        type: "js3d_set_camera",
+                                        camera: cam,
+                                    }, "*");
+                                } catch (_) {}
+                            }, 1500);
+                        }
                     } catch (_) {}
                 }
             }

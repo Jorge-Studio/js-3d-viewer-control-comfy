@@ -891,6 +891,17 @@ window.addEventListener('message', (e) => {
     if (!msg || !msg.type) return;
     if (msg.type === 'js3d_load') loadModel(msg.url, msg.format);
     if (msg.type === 'js3d_capture') captureSnapshot();
+    if (msg.type === 'js3d_set_camera') {
+        try {
+            const cam = msg.camera;
+            if (cam.position) camera.position.set(cam.position.x, cam.position.y, cam.position.z);
+            if (cam.target) orbitControls.target.set(cam.target.x, cam.target.y, cam.target.z);
+            if (cam.fov && camera.isPerspectiveCamera) { camera.fov = cam.fov; camera.updateProjectionMatrix(); }
+            if (cam.zoom) { camera.zoom = cam.zoom; camera.updateProjectionMatrix(); }
+            orbitControls.update();
+            updateCamFields();
+        } catch (err) { console.warn('[JS3D] set_camera error:', err); }
+    }
 });
 
 window.parent.postMessage({ type: 'js3d_ready' }, '*');
