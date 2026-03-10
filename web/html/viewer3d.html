@@ -78,7 +78,7 @@ canvas { display: block; width: 100%; height: 100%; }
             <select id="opt-up-axis"><option value="Y" selected>Y-Up</option><option value="Z">Z-Up</option></select>
         </div>
         <div class="panel-row"><label>Opacity</label><input type="range" id="opt-opacity" min="0" max="1" step="0.01" value="1"><span class="val" id="val-opacity">1.0</span></div>
-        <div class="panel-row"><label>Point Size</label><input type="range" id="opt-point-size" min="0.001" max="0.1" step="0.001" value="0.008"><span class="val" id="val-point-size">0.008</span></div>
+        <div class="panel-row"><label>Point Size</label><input type="range" id="opt-point-size" min="0.0005" max="0.05" step="0.0005" value="0.003"><span class="val" id="val-point-size">0.003</span></div>
     </div>
 
     <!-- Camera Panel -->
@@ -108,10 +108,10 @@ canvas { display: block; width: 100%; height: 100%; }
     </div>
 
     <div id="gizmo-bar">
-        <button class="menu-btn active" id="gz-translate" title="Translate (T)">T</button>
+        <button class="menu-btn" id="gz-translate" title="Translate (T)">T</button>
         <button class="menu-btn" id="gz-rotate" title="Rotate (R)">R</button>
         <button class="menu-btn" id="gz-scale" title="Scale (S)">S</button>
-        <button class="menu-btn" id="gz-none" title="Orbit only (Q)">Q</button>
+        <button class="menu-btn active" id="gz-none" title="Orbit only (Q)">Q</button>
     </div>
 
     <div id="info-bar">JS3D Viewer</div>
@@ -135,8 +135,35 @@ import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
+// ─── Constants ───────────────────────────────────────────────────────────────
 const SH_C0 = 0.28209479177387814;
+const OPACITY_THRESHOLD = 0.02;
 
+const PLY_TYPE_SIZES = {
+    float: 4, float32: 4, double: 8, float64: 8,
+    uchar: 1, uint8: 1, char: 1, int8: 1,
+    ushort: 2, uint16: 2, short: 2, int16: 2,
+    uint: 4, uint32: 4, int: 4, int32: 4,
+};
+
+function plyReadValue(dataView, offset, type, littleEndian) {
+    switch (type) {
+        case 'float': case 'float32': return dataView.getFloat32(offset, littleEndian);
+        case 'double': case 'float64': return dataView.getFloat64(offset, littleEndian);
+        case 'uchar': case 'uint8': return dataView.getUint8(offset);
+        case 'char': case 'int8': return dataView.getInt8(offset);
+        case 'ushort': case 'uint16': return dataView.getUint16(offset, littleEndian);
+        case 'short': case 'int16': return dataView.getInt16(offset, littleEndian);
+        case 'uint': case 'uint32': return dataView.getUint32(offset, littleEndian);
+        case 'int': case 'int32': return dataView.getInt32(offset, littleEndian);
+        default: return dataView.getFloat32(offset, littleEndian);
+    }
+}
+
+function sigmoid(x) { return 1.0 / (1.0 + Math.exp(-x)); }
+function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+
+// ─── Renderer ────────────────────────────────────────────────────────────────
 const container = document.getElementById('canvas-container');
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -147,6 +174,18 @@ renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
 container.insertBefore(renderer.domElement, container.firstChild);
 
+let contextLost = false;
+renderer.domElement.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    contextLost = true;
+    showLoading('WebGL context lost — click Reset View to recover');
+});
+renderer.domElement.addEventListener('webglcontextrestored', () => {
+    contextLost = false;
+    showLoading(null);
+});
+
+// ─── Scene ───────────────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1a1a);
 
@@ -160,9 +199,7 @@ orbitControls.target.set(0, 0, 0);
 
 const transformControls = new TransformControls(camera, renderer.domElement);
 scene.add(transformControls);
-transformControls.addEventListener('dragging-changed', (e) => {
-    orbitControls.enabled = !e.value;
-});
+transformControls.addEventListener('dragging-changed', (e) => { orbitControls.enabled = !e.value; });
 
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
@@ -181,9 +218,12 @@ scene.add(gridHelper);
 const axesHelper = new THREE.AxesHelper(2);
 scene.add(axesHelper);
 
+// ─── State ───────────────────────────────────────────────────────────────────
 let currentModel = null;
 let originalMaterials = new Map();
 let isGaussianSplat = false;
+let isLargePointCloud = false;
+let loadingAbort = null;
 
 const gltfLoader = new GLTFLoader();
 const objLoader = new OBJLoader();
@@ -191,9 +231,216 @@ const stlLoader = new STLLoader();
 const plyLoader = new PLYLoader();
 const fbxLoader = new FBXLoader();
 
+// ─── UI helpers ──────────────────────────────────────────────────────────────
+function showLoading(text) {
+    const el = document.getElementById('loading');
+    if (text === null) { el.classList.remove('active'); return; }
+    el.classList.add('active');
+    el.firstChild.textContent = text;
+}
+function setProgress(pct) {
+    document.getElementById('progress-fill').style.width = Math.min(100, pct) + '%';
+}
+
+// ─── Custom binary PLY parser for Gaussian Splatting ─────────────────────────
+function parsePLYHeader(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const marker = [101,110,100,95,104,101,97,100,101,114,10]; // "end_header\n"
+    let headerEnd = -1;
+    const limit = Math.min(bytes.length, 65536);
+    for (let i = 0; i < limit; i++) {
+        let match = true;
+        for (let j = 0; j < marker.length; j++) {
+            if (bytes[i + j] !== marker[j]) { match = false; break; }
+        }
+        if (match) { headerEnd = i + marker.length; break; }
+    }
+    if (headerEnd < 0) return null;
+
+    const headerText = new TextDecoder().decode(bytes.subarray(0, headerEnd));
+    const lines = headerText.split('\n');
+
+    let format = '';
+    let vertexCount = 0;
+    const properties = [];
+    let inVertex = false;
+    let hasOtherElements = false;
+
+    for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        if (parts[0] === 'format') format = parts[1];
+        if (parts[0] === 'element') {
+            if (parts[1] === 'vertex') { vertexCount = parseInt(parts[2]); inVertex = true; }
+            else { inVertex = false; hasOtherElements = true; }
+        }
+        if (parts[0] === 'property' && inVertex && parts[1] !== 'list') {
+            properties.push({ type: parts[1], name: parts[2] });
+        }
+    }
+
+    const propNames = new Set(properties.map(p => p.name));
+    const isGaussianSplat = propNames.has('f_dc_0') && propNames.has('f_dc_1') && propNames.has('f_dc_2');
+    const littleEndian = format.includes('little');
+
+    let stride = 0;
+    const propMap = {};
+    for (const p of properties) {
+        propMap[p.name] = { offset: stride, type: p.type };
+        stride += PLY_TYPE_SIZES[p.type] || 4;
+    }
+
+    return { format, vertexCount, properties, propMap, stride, dataOffset: headerEnd, isGaussianSplat, littleEndian };
+}
+
+async function fetchWithProgress(url, onProgress) {
+    const response = await fetch(url, { mode: 'cors' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+    const contentLength = parseInt(response.headers.get('Content-Length') || '0');
+
+    if (!response.body || contentLength === 0) {
+        const buffer = await response.arrayBuffer();
+        onProgress(100);
+        return buffer;
+    }
+
+    const reader = response.body.getReader();
+    const chunks = [];
+    let received = 0;
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (contentLength > 0) onProgress(Math.round((received / contentLength) * 100));
+    }
+
+    const result = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.length;
+    }
+    return result.buffer;
+}
+
+async function loadGaussianSplatPLY(url) {
+    showLoading('Downloading PLY file...');
+    setProgress(0);
+
+    const buffer = await fetchWithProgress(url, (pct) => {
+        setProgress(pct * 0.7);
+        showLoading(`Downloading... ${pct}%`);
+    });
+
+    showLoading('Parsing PLY header...');
+    setProgress(72);
+
+    const header = parsePLYHeader(buffer);
+    if (!header) throw new Error('Invalid PLY file');
+    if (!header.isGaussianSplat) return null;
+    if (header.format === 'ascii') return null;
+
+    const { vertexCount, propMap, stride, dataOffset, littleEndian } = header;
+
+    showLoading(`Parsing ${vertexCount.toLocaleString()} splat points...`);
+    setProgress(75);
+
+    const dataView = new DataView(buffer, dataOffset);
+
+    const xOff = propMap['x']?.offset;
+    const yOff = propMap['y']?.offset;
+    const zOff = propMap['z']?.offset;
+    const dc0Off = propMap['f_dc_0']?.offset;
+    const dc1Off = propMap['f_dc_1']?.offset;
+    const dc2Off = propMap['f_dc_2']?.offset;
+    const opOff = propMap['opacity']?.offset;
+
+    if (xOff === undefined || yOff === undefined || zOff === undefined) {
+        throw new Error('PLY missing position properties');
+    }
+
+    const xType = propMap['x'].type;
+    const yType = propMap['y'].type;
+    const zType = propMap['z'].type;
+    const dcType = propMap['f_dc_0']?.type || 'float';
+    const opType = propMap['opacity']?.type || 'float';
+
+    const positions = new Float32Array(vertexCount * 3);
+    const colors = new Float32Array(vertexCount * 3);
+    let validCount = 0;
+
+    const batchSize = 100000;
+
+    for (let i = 0; i < vertexCount; i++) {
+        const base = i * stride;
+
+        if (opOff !== undefined) {
+            const rawOp = plyReadValue(dataView, base + opOff, opType, littleEndian);
+            if (sigmoid(rawOp) < OPACITY_THRESHOLD) continue;
+        }
+
+        const px = plyReadValue(dataView, base + xOff, xType, littleEndian);
+        const py = plyReadValue(dataView, base + yOff, yType, littleEndian);
+        const pz = plyReadValue(dataView, base + zOff, zType, littleEndian);
+
+        if (!isFinite(px) || !isFinite(py) || !isFinite(pz)) continue;
+
+        positions[validCount * 3]     = px;
+        positions[validCount * 3 + 1] = py;
+        positions[validCount * 3 + 2] = pz;
+
+        if (dc0Off !== undefined) {
+            const r = plyReadValue(dataView, base + dc0Off, dcType, littleEndian);
+            const g = plyReadValue(dataView, base + dc1Off, dcType, littleEndian);
+            const b = plyReadValue(dataView, base + dc2Off, dcType, littleEndian);
+            colors[validCount * 3]     = clamp01(r * SH_C0 + 0.5);
+            colors[validCount * 3 + 1] = clamp01(g * SH_C0 + 0.5);
+            colors[validCount * 3 + 2] = clamp01(b * SH_C0 + 0.5);
+        } else {
+            colors[validCount * 3] = colors[validCount * 3 + 1] = colors[validCount * 3 + 2] = 0.7;
+        }
+
+        validCount++;
+
+        if (i > 0 && i % batchSize === 0) {
+            setProgress(75 + Math.round((i / vertexCount) * 20));
+            await new Promise(r => setTimeout(r, 0));
+        }
+    }
+
+    showLoading(`Building geometry (${validCount.toLocaleString()} points)...`);
+    setProgress(96);
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions.slice(0, validCount * 3), 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors.slice(0, validCount * 3), 3));
+    geometry.computeBoundingSphere();
+
+    const autoSize = Math.min(0.03, Math.max(0.001, 2.0 / Math.sqrt(validCount)));
+
+    const material = new THREE.PointsMaterial({
+        size: autoSize,
+        vertexColors: true,
+        sizeAttenuation: true,
+    });
+
+    const points = new THREE.Points(geometry, material);
+    points.raycast = () => {};
+
+    const sizeSlider = document.getElementById('opt-point-size');
+    sizeSlider.value = autoSize;
+    document.getElementById('val-point-size').textContent = autoSize.toFixed(4);
+
+    setProgress(100);
+    return { object: points, vertexCount: validCount, isGS: true };
+}
+
+// ─── Model management ────────────────────────────────────────────────────────
 function clearModel() {
     if (currentModel) {
-        transformControls.detach();
+        try { transformControls.detach(); } catch (_) {}
         scene.remove(currentModel);
         currentModel.traverse((child) => {
             if (child.geometry) child.geometry.dispose();
@@ -205,11 +452,13 @@ function clearModel() {
         currentModel = null;
         originalMaterials.clear();
         isGaussianSplat = false;
+        isLargePointCloud = false;
     }
 }
 
 function centerAndScale(object) {
     const box = new THREE.Box3().setFromObject(object);
+    if (box.isEmpty()) return;
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
@@ -226,117 +475,46 @@ function storeOriginalMaterials(object) {
         if (child.isMesh && child.material) {
             originalMaterials.set(child.uuid, child.material.clone ? child.material.clone() : child.material);
         }
+        if (child.isPoints && child.material) {
+            originalMaterials.set(child.uuid, child.material.clone ? child.material.clone() : child.material);
+        }
     });
 }
 
-function sigmoid(x) { return 1.0 / (1.0 + Math.exp(-x)); }
-
-function processGaussianSplatPLY(geometry) {
-    const pos = geometry.getAttribute('position');
-    if (!pos) return null;
-    const count = pos.count;
-
-    const fdc0 = geometry.getAttribute('f_dc_0');
-    const fdc1 = geometry.getAttribute('f_dc_1');
-    const fdc2 = geometry.getAttribute('f_dc_2');
-    const opacityAttr = geometry.getAttribute('opacity');
-
-    if (!fdc0 || !fdc1 || !fdc2) return null;
-
-    isGaussianSplat = true;
-
-    const colors = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-        colors[i * 3 + 0] = sigmoid(fdc0.getX(i) * SH_C0 + 0.5);
-        colors[i * 3 + 1] = sigmoid(fdc1.getX(i) * SH_C0 + 0.5);
-        colors[i * 3 + 2] = sigmoid(fdc2.getX(i) * SH_C0 + 0.5);
-    }
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-    const pointSize = parseFloat(document.getElementById('opt-point-size').value) || 0.008;
-    const material = new THREE.PointsMaterial({
-        size: pointSize,
-        vertexColors: true,
-        sizeAttenuation: true,
-        transparent: true,
-        opacity: 0.85,
-        depthWrite: false,
-        blending: THREE.NormalBlending,
-    });
-
-    return new THREE.Points(geometry, material);
-}
-
-function addModelToScene(object) {
+function addModelToScene(object, opts = {}) {
     clearModel();
-    centerAndScale(object);
-    storeOriginalMaterials(object);
-    scene.add(object);
-    currentModel = object;
-    transformControls.attach(object);
+
+    isGaussianSplat = !!opts.isGS;
+    isLargePointCloud = !!opts.isLargePointCloud;
+
+    const wrapper = new THREE.Group();
+    wrapper.add(object);
+    centerAndScale(wrapper);
+
+    if (isGaussianSplat || isLargePointCloud) {
+        object.traverse(child => {
+            if (child.isPoints) child.raycast = () => {};
+        });
+    }
+
+    storeOriginalMaterials(wrapper);
+    scene.add(wrapper);
+    currentModel = wrapper;
+
+    if (isGaussianSplat || isLargePointCloud) {
+        setGizmoMode('none');
+    } else {
+        setGizmoMode('none');
+    }
+
     orbitControls.target.set(0, 0, 0);
     camera.position.set(2, 1.5, 3);
     orbitControls.update();
-    updateInfoBar();
-    document.getElementById('loading').classList.remove('active');
+    updateInfoBar(opts.vertexCount);
+    showLoading(null);
 }
 
-function setProgress(pct) {
-    document.getElementById('progress-fill').style.width = pct + '%';
-}
-
-function loadModel(url, format) {
-    document.getElementById('loading').classList.add('active');
-    document.getElementById('loading').firstChild.textContent = 'Loading...';
-    setProgress(10);
-
-    const onProgress = (xhr) => {
-        if (xhr.total > 0) setProgress(Math.min(90, Math.round((xhr.loaded / xhr.total) * 80) + 10));
-    };
-    const onError = (err) => {
-        console.error('[JS3D]', err);
-        document.getElementById('loading').firstChild.textContent = 'Error loading model';
-    };
-
-    switch (format) {
-        case 'glb': case 'gltf':
-            gltfLoader.load(url, (gltf) => { setProgress(95); addModelToScene(gltf.scene); }, onProgress, onError);
-            break;
-        case 'obj':
-            objLoader.load(url, (obj) => { setProgress(95); addModelToScene(obj); }, onProgress, onError);
-            break;
-        case 'stl':
-            stlLoader.load(url, (geo) => {
-                geo.computeVertexNormals();
-                setProgress(95);
-                addModelToScene(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.3, roughness: 0.6 })));
-            }, onProgress, onError);
-            break;
-        case 'ply':
-            plyLoader.load(url, (geo) => {
-                setProgress(85);
-                let object = processGaussianSplatPLY(geo);
-                if (!object) {
-                    geo.computeVertexNormals();
-                    if (geo.index !== null) {
-                        object = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.3, roughness: 0.6, vertexColors: geo.hasAttribute('color') }));
-                    } else {
-                        object = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.01, vertexColors: geo.hasAttribute('color'), sizeAttenuation: true }));
-                    }
-                }
-                setProgress(95);
-                addModelToScene(object);
-            }, onProgress, onError);
-            break;
-        case 'fbx':
-            fbxLoader.load(url, (fbx) => { setProgress(95); addModelToScene(fbx); }, onProgress, onError);
-            break;
-        default:
-            gltfLoader.load(url, (gltf) => { setProgress(95); addModelToScene(gltf.scene); }, onProgress, onError);
-    }
-}
-
-function updateInfoBar() {
+function updateInfoBar(vertexOverride) {
     let info = 'JS3D Viewer';
     if (currentModel) {
         let verts = 0, faces = 0;
@@ -347,6 +525,7 @@ function updateInfoBar() {
                 if (child.geometry.index) faces += child.geometry.index.count / 3;
             }
         });
+        if (vertexOverride) verts = vertexOverride;
         info = `Verts: ${verts.toLocaleString()}`;
         if (faces > 0) info += ` | Faces: ${faces.toLocaleString()}`;
         if (isGaussianSplat) info += ' | Gaussian Splat';
@@ -354,7 +533,100 @@ function updateInfoBar() {
     document.getElementById('info-bar').textContent = info;
 }
 
-// ─── Panel toggles ───
+// ─── Model loading ───────────────────────────────────────────────────────────
+async function loadModel(url, format) {
+    showLoading('Loading...');
+    setProgress(5);
+
+    if (loadingAbort) { loadingAbort.abort(); loadingAbort = null; }
+
+    try {
+        if (format === 'ply') {
+            await loadPLYModel(url);
+        } else {
+            await loadStandardModel(url, format);
+        }
+    } catch (err) {
+        console.error('[JS3D] Load error:', err);
+        showLoading('Error: ' + (err.message || 'Failed to load model'));
+    }
+}
+
+async function loadPLYModel(url) {
+    try {
+        const gsResult = await loadGaussianSplatPLY(url);
+        if (gsResult) {
+            addModelToScene(gsResult.object, { isGS: true, isLargePointCloud: true, vertexCount: gsResult.vertexCount });
+            return;
+        }
+    } catch (err) {
+        console.warn('[JS3D] GS PLY parse failed, trying standard PLYLoader:', err.message);
+    }
+
+    showLoading('Loading PLY with standard loader...');
+    setProgress(10);
+    return new Promise((resolve, reject) => {
+        plyLoader.load(url, (geo) => {
+            try {
+                setProgress(85);
+                geo.computeVertexNormals();
+                const pos = geo.getAttribute('position');
+                const count = pos ? pos.count : 0;
+                const hasColor = geo.hasAttribute('color');
+                let object;
+                if (geo.index !== null) {
+                    object = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+                        color: 0x888888, metalness: 0.3, roughness: 0.6, vertexColors: hasColor
+                    }));
+                } else {
+                    const sz = count > 100000 ? 0.003 : count > 10000 ? 0.008 : 0.015;
+                    object = new THREE.Points(geo, new THREE.PointsMaterial({
+                        size: sz, vertexColors: hasColor, sizeAttenuation: true,
+                        color: hasColor ? undefined : 0x88aaff,
+                    }));
+                    if (!hasColor) object.material.color = new THREE.Color(0x88aaff);
+                }
+                setProgress(95);
+                addModelToScene(object, { isLargePointCloud: count > 50000 });
+                resolve();
+            } catch (e) { reject(e); }
+        }, (xhr) => {
+            if (xhr.total > 0) setProgress(10 + Math.round((xhr.loaded / xhr.total) * 70));
+        }, reject);
+    });
+}
+
+function loadStandardModel(url, format) {
+    return new Promise((resolve, reject) => {
+        const onProgress = (xhr) => {
+            if (xhr.total > 0) setProgress(Math.min(90, Math.round((xhr.loaded / xhr.total) * 80) + 10));
+        };
+        const onError = (err) => { reject(err instanceof Error ? err : new Error(String(err))); };
+
+        switch (format) {
+            case 'glb': case 'gltf':
+                gltfLoader.load(url, (gltf) => { setProgress(95); addModelToScene(gltf.scene); resolve(); }, onProgress, onError);
+                break;
+            case 'obj':
+                objLoader.load(url, (obj) => { setProgress(95); addModelToScene(obj); resolve(); }, onProgress, onError);
+                break;
+            case 'stl':
+                stlLoader.load(url, (geo) => {
+                    geo.computeVertexNormals(); setProgress(95);
+                    addModelToScene(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.3, roughness: 0.6 })));
+                    resolve();
+                }, onProgress, onError);
+                break;
+            case 'fbx':
+                fbxLoader.load(url, (fbx) => { setProgress(95); addModelToScene(fbx); resolve(); }, onProgress, onError);
+                break;
+            default:
+                gltfLoader.load(url, (gltf) => { setProgress(95); addModelToScene(gltf.scene); resolve(); }, onProgress, onError);
+        }
+    });
+}
+
+// ─── Panel toggles ───────────────────────────────────────────────────────────
 const panels = { scene: 'panel-scene', model: 'panel-model', camera: 'panel-camera', light: 'panel-light' };
 let activePanel = null;
 
@@ -371,23 +643,24 @@ document.getElementById('btn-model').addEventListener('click', () => togglePanel
 document.getElementById('btn-camera').addEventListener('click', () => togglePanel('camera'));
 document.getElementById('btn-light').addEventListener('click', () => togglePanel('light'));
 
-// ─── Scene options ───
+// ─── Scene options ───────────────────────────────────────────────────────────
 document.getElementById('opt-grid').addEventListener('change', (e) => { gridHelper.visible = e.target.checked; });
 document.getElementById('opt-bg-color').addEventListener('input', (e) => { scene.background = new THREE.Color(e.target.value); });
 document.getElementById('opt-axes').addEventListener('change', (e) => { axesHelper.visible = e.target.checked; });
 
-// ─── Model options ───
+// ─── Model options ───────────────────────────────────────────────────────────
 document.getElementById('opt-material').addEventListener('change', (e) => {
     if (!currentModel) return;
     const mode = e.target.value;
     currentModel.traverse((child) => {
         if (!child.isMesh && !child.isPoints) return;
+        const orig = originalMaterials.get(child.uuid);
         switch (mode) {
-            case 'original': { const orig = originalMaterials.get(child.uuid); if (orig) child.material = orig.clone(); break; }
-            case 'wireframe': child.material = new THREE.MeshBasicMaterial({ color: 0x00ff88, wireframe: true }); break;
-            case 'normal': child.material = new THREE.MeshNormalMaterial(); break;
-            case 'flat': child.material = new THREE.MeshStandardMaterial({ color: 0x888888, flatShading: true, metalness: 0.2, roughness: 0.8 }); break;
-            case 'points': if (child.isMesh) { child.material = new THREE.PointsMaterial({ size: 0.01, color: 0x88aaff }); } break;
+            case 'original': if (orig) child.material = orig.clone(); break;
+            case 'wireframe': if (child.isMesh) child.material = new THREE.MeshBasicMaterial({ color: 0x00ff88, wireframe: true }); break;
+            case 'normal': if (child.isMesh) child.material = new THREE.MeshNormalMaterial(); break;
+            case 'flat': if (child.isMesh) child.material = new THREE.MeshStandardMaterial({ color: 0x888888, flatShading: true, metalness: 0.2, roughness: 0.8 }); break;
+            case 'points': break;
         }
     });
 });
@@ -402,17 +675,19 @@ document.getElementById('opt-opacity').addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('val-opacity').textContent = v.toFixed(2);
     if (!currentModel) return;
-    currentModel.traverse((child) => { if (child.material) { child.material.transparent = v < 1; child.material.opacity = v; } });
+    currentModel.traverse((child) => {
+        if (child.material) { child.material.transparent = v < 1; child.material.opacity = v; child.material.needsUpdate = true; }
+    });
 });
 
 document.getElementById('opt-point-size').addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
-    document.getElementById('val-point-size').textContent = v.toFixed(3);
+    document.getElementById('val-point-size').textContent = v.toFixed(4);
     if (!currentModel) return;
     currentModel.traverse((child) => { if (child.isPoints && child.material) child.material.size = v; });
 });
 
-// ─── Camera controls ───
+// ─── Camera controls ─────────────────────────────────────────────────────────
 document.getElementById('opt-cam-type').addEventListener('change', (e) => {
     const w = container.clientWidth, h = container.clientHeight;
     const oldPos = camera.position.clone(), oldTarget = orbitControls.target.clone();
@@ -446,22 +721,20 @@ function updateCamFields() {
 
 for (const id of ['cam-px','cam-py','cam-pz']) {
     document.getElementById(id).addEventListener('change', (e) => {
-        const axis = id.slice(-1);
-        const v = parseFloat(e.target.value) || 0;
-        camera.position[axis === 'x' ? 'x' : axis === 'y' ? 'y' : 'z'] = v;
+        const axis = id.charAt(id.length - 1);
+        camera.position[axis] = parseFloat(e.target.value) || 0;
         orbitControls.update();
     });
 }
 for (const id of ['cam-tx','cam-ty','cam-tz']) {
     document.getElementById(id).addEventListener('change', (e) => {
-        const axis = id.slice(-1);
-        const v = parseFloat(e.target.value) || 0;
-        orbitControls.target[axis === 'x' ? 'x' : axis === 'y' ? 'y' : 'z'] = v;
+        const axis = id.charAt(id.length - 1);
+        orbitControls.target[axis] = parseFloat(e.target.value) || 0;
         orbitControls.update();
     });
 }
 
-// ─── Light controls ───
+// ─── Light controls ──────────────────────────────────────────────────────────
 document.getElementById('opt-ambient').addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('val-ambient').textContent = v.toFixed(2);
@@ -479,71 +752,113 @@ document.getElementById('opt-light-color').addEventListener('input', (e) => {
 
 for (const id of ['light-px','light-py','light-pz']) {
     document.getElementById(id).addEventListener('change', (e) => {
-        const axis = id.slice(-1);
-        const v = parseFloat(e.target.value) || 0;
-        dirLight.position[axis === 'x' ? 'x' : axis === 'y' ? 'y' : 'z'] = v;
+        const axis = id.charAt(id.length - 1);
+        dirLight.position[axis] = parseFloat(e.target.value) || 0;
         dirLightHelper.update();
     });
 }
 
-// ─── Gizmo ───
+// ─── Gizmo ───────────────────────────────────────────────────────────────────
+let currentGizmoMode = 'none';
+
 function setGizmoMode(mode) {
+    currentGizmoMode = mode;
     ['gz-translate', 'gz-rotate', 'gz-scale', 'gz-none'].forEach(id => document.getElementById(id).classList.remove('active'));
-    if (mode === 'none') { transformControls.detach(); document.getElementById('gz-none').classList.add('active'); }
-    else { if (currentModel) transformControls.attach(currentModel); transformControls.setMode(mode); document.getElementById('gz-' + mode).classList.add('active'); }
+
+    try {
+        if (mode === 'none') {
+            transformControls.detach();
+            document.getElementById('gz-none').classList.add('active');
+        } else {
+            if (currentModel) {
+                transformControls.attach(currentModel);
+                transformControls.setMode(mode);
+            }
+            document.getElementById('gz-' + mode).classList.add('active');
+        }
+    } catch (err) {
+        console.warn('[JS3D] Gizmo error:', err.message);
+        transformControls.detach();
+        document.getElementById('gz-none').classList.add('active');
+        currentGizmoMode = 'none';
+    }
 }
+
 document.getElementById('gz-translate').addEventListener('click', () => setGizmoMode('translate'));
 document.getElementById('gz-rotate').addEventListener('click', () => setGizmoMode('rotate'));
 document.getElementById('gz-scale').addEventListener('click', () => setGizmoMode('scale'));
 document.getElementById('gz-none').addEventListener('click', () => setGizmoMode('none'));
 document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-    switch (e.key.toLowerCase()) { case 't': setGizmoMode('translate'); break; case 'r': setGizmoMode('rotate'); break; case 's': setGizmoMode('scale'); break; case 'q': setGizmoMode('none'); break; }
+    switch (e.key.toLowerCase()) {
+        case 't': setGizmoMode('translate'); break;
+        case 'r': setGizmoMode('rotate'); break;
+        case 's': setGizmoMode('scale'); break;
+        case 'q': setGizmoMode('none'); break;
+    }
 });
 
-// ─── Snapshot ───
+// ─── Snapshot ────────────────────────────────────────────────────────────────
 document.getElementById('btn-snapshot').addEventListener('click', captureSnapshot);
 
 function captureSnapshot() {
-    renderer.render(scene, camera);
-    const imageData = renderer.domElement.toDataURL('image/png');
-    const prevBg = scene.background;
-    scene.background = null;
-
-    let maskData = '', normalData = '';
-    if (currentModel) {
-        const savedVis = { grid: gridHelper.visible, axes: axesHelper.visible, tc: transformControls.visible };
-        const savedMats = new Map();
-        currentModel.traverse(c => { if ((c.isMesh || c.isPoints) && c.material) { savedMats.set(c.uuid, c.material); c.material = new THREE.MeshBasicMaterial({ color: 0xffffff }); } });
-        gridHelper.visible = false; axesHelper.visible = false; transformControls.visible = false;
+    if (contextLost) return;
+    try {
         renderer.render(scene, camera);
-        maskData = renderer.domElement.toDataURL('image/png');
+        const imageData = renderer.domElement.toDataURL('image/png');
+        const prevBg = scene.background;
+        scene.background = null;
 
-        currentModel.traverse(c => { if (c.isMesh) c.material = new THREE.MeshNormalMaterial(); });
-        renderer.render(scene, camera);
-        normalData = renderer.domElement.toDataURL('image/png');
+        let maskData = '', normalData = '';
+        if (currentModel) {
+            const savedVis = { grid: gridHelper.visible, axes: axesHelper.visible, tc: transformControls.visible };
+            const savedMats = new Map();
+            currentModel.traverse(c => {
+                if ((c.isMesh || c.isPoints) && c.material) {
+                    savedMats.set(c.uuid, c.material);
+                    c.material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                }
+            });
+            gridHelper.visible = false; axesHelper.visible = false; transformControls.visible = false;
+            renderer.render(scene, camera);
+            maskData = renderer.domElement.toDataURL('image/png');
 
-        currentModel.traverse(c => { if (savedMats.has(c.uuid)) c.material = savedMats.get(c.uuid); });
-        gridHelper.visible = savedVis.grid; axesHelper.visible = savedVis.axes; transformControls.visible = savedVis.tc;
+            currentModel.traverse(c => { if (c.isMesh) c.material = new THREE.MeshNormalMaterial(); });
+            renderer.render(scene, camera);
+            normalData = renderer.domElement.toDataURL('image/png');
+
+            currentModel.traverse(c => { if (savedMats.has(c.uuid)) c.material = savedMats.get(c.uuid); });
+            gridHelper.visible = savedVis.grid; axesHelper.visible = savedVis.axes; transformControls.visible = savedVis.tc;
+        }
+        scene.background = prevBg;
+
+        window.parent.postMessage({
+            type: 'js3d_snapshot', image: imageData, mask: maskData, normal: normalData,
+            camera: {
+                cameraType: camera.isPerspectiveCamera ? 'perspective' : 'orthographic',
+                fov: camera.fov || 50,
+                position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+                target: { x: orbitControls.target.x, y: orbitControls.target.y, z: orbitControls.target.z },
+                zoom: camera.zoom,
+            },
+        }, '*');
+    } catch (err) {
+        console.error('[JS3D] Snapshot error:', err);
     }
-    scene.background = prevBg;
-
-    window.parent.postMessage({
-        type: 'js3d_snapshot', image: imageData, mask: maskData, normal: normalData,
-        camera: { cameraType: camera.isPerspectiveCamera ? 'perspective' : 'orthographic', fov: camera.fov || 50,
-            position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-            target: { x: orbitControls.target.x, y: orbitControls.target.y, z: orbitControls.target.z }, zoom: camera.zoom },
-    }, '*');
 }
 
-// ─── Reset ───
+// ─── Reset ───────────────────────────────────────────────────────────────────
 document.getElementById('btn-fullscreen').addEventListener('click', () => {
-    camera.position.set(2, 1.5, 3); orbitControls.target.set(0, 0, 0); orbitControls.update(); updateCamFields();
+    camera.position.set(2, 1.5, 3);
+    orbitControls.target.set(0, 0, 0);
+    orbitControls.update();
+    updateCamFields();
 });
 
-// ─── Resize ───
+// ─── Resize ──────────────────────────────────────────────────────────────────
 function onResize() {
     const w = container.clientWidth, h = container.clientHeight;
+    if (w === 0 || h === 0) return;
     renderer.setSize(w, h);
     if (camera.isPerspectiveCamera) { camera.aspect = w / h; }
     else { const f = 3, a = w / h; camera.left = -f * a; camera.right = f * a; camera.top = f; camera.bottom = -f; }
@@ -552,17 +867,22 @@ function onResize() {
 window.addEventListener('resize', onResize);
 new ResizeObserver(onResize).observe(container);
 
-// ─── Render loop ───
+// ─── Render loop ─────────────────────────────────────────────────────────────
 let frameCount = 0;
 function animate() {
     requestAnimationFrame(animate);
-    orbitControls.update();
-    renderer.render(scene, camera);
-    if (++frameCount % 30 === 0) updateCamFields();
+    if (contextLost) return;
+    try {
+        orbitControls.update();
+        renderer.render(scene, camera);
+        if (++frameCount % 30 === 0) updateCamFields();
+    } catch (err) {
+        console.error('[JS3D] Render error:', err);
+    }
 }
 animate();
 
-// ─── Message handler ───
+// ─── Message handler ─────────────────────────────────────────────────────────
 window.addEventListener('message', (e) => {
     const msg = e.data;
     if (!msg || !msg.type) return;
