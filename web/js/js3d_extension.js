@@ -83,6 +83,78 @@ function findBackgroundImageUrl(loaderNode) {
 app.registerExtension({
     name: "JS3D.ViewerControl",
 
+    async setup() {
+        try {
+            const orig = app.graphToPrompt;
+            if (typeof orig === "function") {
+                app.graphToPrompt = async function (...args) {
+                    try {
+                        const nodes = app.graph?._nodes?.filter(
+                            (n) =>
+                                n.type === "JS3D_Load3DController" &&
+                                n._js3dIframe?.contentWindow
+                        );
+                        if (nodes && nodes.length > 0) {
+                            await Promise.all(
+                                nodes.map(
+                                    (node) =>
+                                        new Promise((resolve) => {
+                                            let done = false;
+                                            const handler = (e) => {
+                                                if (done) return;
+                                                if (
+                                                    e.source !==
+                                                    node._js3dIframe?.contentWindow
+                                                )
+                                                    return;
+                                                if (e.data?.type !== "js3d_snapshot")
+                                                    return;
+                                                done = true;
+                                                window.removeEventListener(
+                                                    "message",
+                                                    handler
+                                                );
+                                                const snap = JSON.stringify({
+                                                    image: e.data.image || "",
+                                                    mask: e.data.mask || "",
+                                                    normal: e.data.normal || "",
+                                                    camera: e.data.camera || {},
+                                                });
+                                                node._js3dSnapshotData = snap;
+                                                const w = node.widgets?.find(
+                                                    (w) => w.name === "snapshot_data"
+                                                );
+                                                if (w) w.value = snap;
+                                                resolve();
+                                            };
+                                            window.addEventListener("message", handler);
+                                            node._js3dIframe.contentWindow.postMessage(
+                                                { type: "js3d_capture" },
+                                                "*"
+                                            );
+                                            setTimeout(() => {
+                                                if (!done) {
+                                                    done = true;
+                                                    window.removeEventListener(
+                                                        "message",
+                                                        handler
+                                                    );
+                                                    resolve();
+                                                }
+                                            }, 3000);
+                                        })
+                                )
+                            );
+                        }
+                    } catch (_) {}
+                    return orig.apply(this, args);
+                };
+            }
+        } catch (e) {
+            console.warn("[JS3D] setup hook skipped:", e);
+        }
+    },
+
     async beforeRegisterNodeDef(nodeType, nodeData, _app) {
         if (!VIEWER_NODES.includes(nodeData.name)) return;
 
@@ -306,6 +378,82 @@ app.registerExtension({
         nodeType.prototype.onRemoved = function () {
             if (this._pollInterval) clearInterval(this._pollInterval);
             origOnRemoved?.apply(this, arguments);
+        };
+    },
+});
+
+app.registerExtension({
+    name: "JS3D.ExportDownload",
+
+    async beforeRegisterNodeDef(nodeType, nodeData, _app) {
+        if (nodeData.name !== "JS3D_ExportFormat") return;
+
+        const origOnExecuted = nodeType.prototype.onExecuted;
+        nodeType.prototype.onExecuted = function (output) {
+            origOnExecuted?.apply(this, arguments);
+
+            const data = output?.js3d_export;
+            if (!data || !data[0]) return;
+
+            const info = data[0];
+            const downloadUrl = `/view?filename=${encodeURIComponent(info.filename)}&type=${info.type}&subfolder=${encodeURIComponent(info.subfolder || "")}`;
+
+            let dlWidget = this.widgets?.find((w) => w.name === "_js3d_download");
+            if (dlWidget) {
+                dlWidget.value = info.filename;
+                if (dlWidget._btn) dlWidget._btn.onclick = () => {
+                    const a = document.createElement("a");
+                    a.href = downloadUrl;
+                    a.download = info.filename;
+                    a.click();
+                };
+                return;
+            }
+
+            const container = document.createElement("div");
+            container.style.cssText =
+                "display:flex; gap:8px; align-items:center; padding:4px 0;";
+
+            const btn = document.createElement("button");
+            btn.textContent = `Download ${info.filename}`;
+            btn.style.cssText = `
+                flex:1; padding:8px 12px; border:1px solid #6a9eff; border-radius:6px;
+                background:rgba(80,120,200,0.2); color:#9ac0ff; font-size:12px;
+                cursor:pointer; font-weight:500; text-align:center;
+            `;
+            btn.addEventListener("mouseenter", () => {
+                btn.style.background = "rgba(80,120,200,0.4)";
+            });
+            btn.addEventListener("mouseleave", () => {
+                btn.style.background = "rgba(80,120,200,0.2)";
+            });
+            btn.onclick = () => {
+                const a = document.createElement("a");
+                a.href = downloadUrl;
+                a.download = info.filename;
+                a.click();
+            };
+            container.appendChild(btn);
+
+            const sizeLabel = document.createElement("span");
+            sizeLabel.style.cssText = "font-size:10px; color:#666; white-space:nowrap;";
+            if (info.size) {
+                const kb = (info.size / 1024).toFixed(1);
+                sizeLabel.textContent = kb > 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`;
+            } else if (info.note) {
+                sizeLabel.textContent = info.note;
+            }
+            container.appendChild(sizeLabel);
+
+            const widget = this.addDOMWidget("_js3d_download", "custom", container, {
+                serialize: false,
+                hideOnZoom: false,
+            });
+            widget._btn = btn;
+            widget.value = info.filename;
+
+            this.setSize?.(this.computeSize());
+            app.graph?.setDirtyCanvas?.(true);
         };
     },
 });

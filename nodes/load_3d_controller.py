@@ -65,17 +65,27 @@ class JS3D_Load3DController:
     def execute(self, model_file, width, height, snapshot_data=""):
         mesh_path = _resolve_path(model_file)
 
+        snap_len = len(snapshot_data.strip()) if snapshot_data else 0
+        print(f"[JS3D Load3D] execute: file={model_file}, size={width}x{height}, "
+              f"snapshot_data length={snap_len}")
+
         if snapshot_data and snapshot_data.strip():
             try:
                 data = json.loads(snapshot_data)
-                image = _decode_base64_image(data.get("image", ""), width, height)
-                mask = _decode_base64_mask(data.get("mask", ""), width, height)
+                img_b64 = data.get("image", "")
+                print(f"[JS3D Load3D] snapshot parsed OK — image b64 length={len(img_b64)}, "
+                      f"has mask={bool(data.get('mask'))}, has normal={bool(data.get('normal'))}")
+                image, mask = _decode_base64_image_and_mask(img_b64, width, height)
                 normal = _decode_base64_image(data.get("normal", ""), width, height)
                 cam = json.dumps(data.get("camera", {}))
+                mask_sum = float(mask.sum())
+                print(f"[JS3D Load3D] decoded image shape={image.shape}, "
+                      f"mask shape={mask.shape}, mask sum={mask_sum:.1f}")
                 return (image, mask, mesh_path, normal, cam, width, height)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[JS3D Load3D] ERROR decoding snapshot: {e}")
 
+        print("[JS3D Load3D] No snapshot data — returning blank image")
         blank_img = torch.zeros(1, height, width, 3, dtype=torch.float32)
         blank_mask = torch.zeros(1, height, width, dtype=torch.float32)
         return (blank_img, blank_mask, mesh_path, blank_img.clone(), "{}", width, height)
@@ -85,6 +95,27 @@ def _resolve_path(model_file):
     if os.path.isabs(model_file) and os.path.exists(model_file):
         return model_file
     return os.path.join(folder_paths.get_input_directory(), model_file)
+
+
+def _decode_base64_image_and_mask(b64_str, w, h):
+    """Decode a transparent PNG: returns (RGB image, alpha mask)."""
+    blank_img = torch.zeros(1, h, w, 3, dtype=torch.float32)
+    blank_mask = torch.zeros(1, h, w, dtype=torch.float32)
+    if not b64_str:
+        return blank_img, blank_mask
+    try:
+        if "," in b64_str:
+            b64_str = b64_str.split(",", 1)[1]
+        raw = base64.b64decode(b64_str)
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(raw)).convert("RGBA")
+        arr = np.array(img).astype(np.float32) / 255.0
+        rgb = torch.from_numpy(arr[:, :, :3]).unsqueeze(0)
+        alpha = torch.from_numpy(arr[:, :, 3]).unsqueeze(0)
+        return rgb, alpha
+    except Exception:
+        return blank_img, blank_mask
 
 
 def _decode_base64_image(b64_str, w, h):
@@ -101,22 +132,6 @@ def _decode_base64_image(b64_str, w, h):
         return torch.from_numpy(arr).unsqueeze(0)
     except Exception:
         return torch.zeros(1, h, w, 3, dtype=torch.float32)
-
-
-def _decode_base64_mask(b64_str, w, h):
-    if not b64_str:
-        return torch.zeros(1, h, w, dtype=torch.float32)
-    try:
-        if "," in b64_str:
-            b64_str = b64_str.split(",", 1)[1]
-        raw = base64.b64decode(b64_str)
-        from PIL import Image
-        import io
-        img = Image.open(io.BytesIO(raw)).convert("L")
-        arr = np.array(img).astype(np.float32) / 255.0
-        return torch.from_numpy(arr).unsqueeze(0)
-    except Exception:
-        return torch.zeros(1, h, w, dtype=torch.float32)
 
 
 NODE_CLASS_MAPPINGS = {

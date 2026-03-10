@@ -540,6 +540,8 @@ function addModelToScene(object, opts = {}) {
     orbitControls.update();
     updateInfoBar(opts.vertexCount);
     showLoading(null);
+
+    setTimeout(() => { if (!contextLost && currentModel) captureSnapshot(); }, 500);
 }
 
 function updateInfoBar(vertexOverride) {
@@ -849,14 +851,28 @@ document.getElementById('btn-snapshot').addEventListener('click', captureSnapsho
 function captureSnapshot() {
     if (contextLost) return;
     try {
+        const prevBg = scene.background;
+        const prevClear = renderer.getClearColor(new THREE.Color());
+        const prevAlpha = renderer.getClearAlpha();
+        const savedVis = {
+            grid: gridHelper.visible,
+            axes: axesHelper.visible,
+            tc: transformControls.visible,
+            dirHelper: dirLightHelper.visible,
+        };
+
+        gridHelper.visible = false;
+        axesHelper.visible = false;
+        transformControls.visible = false;
+        dirLightHelper.visible = false;
+        scene.background = null;
+        renderer.setClearColor(0x000000, 0);
+
         renderer.render(scene, camera);
         const imageData = renderer.domElement.toDataURL('image/png');
-        const prevBg = scene.background;
-        scene.background = null;
 
         let maskData = '', normalData = '';
         if (currentModel) {
-            const savedVis = { grid: gridHelper.visible, axes: axesHelper.visible, tc: transformControls.visible };
             const savedMats = new Map();
             currentModel.traverse(c => {
                 if ((c.isMesh || c.isPoints) && c.material) {
@@ -864,7 +880,6 @@ function captureSnapshot() {
                     c.material = new THREE.MeshBasicMaterial({ color: 0xffffff });
                 }
             });
-            gridHelper.visible = false; axesHelper.visible = false; transformControls.visible = false;
             renderer.render(scene, camera);
             maskData = renderer.domElement.toDataURL('image/png');
 
@@ -873,9 +888,14 @@ function captureSnapshot() {
             normalData = renderer.domElement.toDataURL('image/png');
 
             currentModel.traverse(c => { if (savedMats.has(c.uuid)) c.material = savedMats.get(c.uuid); });
-            gridHelper.visible = savedVis.grid; axesHelper.visible = savedVis.axes; transformControls.visible = savedVis.tc;
         }
+
         scene.background = prevBg;
+        renderer.setClearColor(prevClear, prevAlpha);
+        gridHelper.visible = savedVis.grid;
+        axesHelper.visible = savedVis.axes;
+        transformControls.visible = savedVis.tc;
+        dirLightHelper.visible = savedVis.dirHelper;
 
         window.parent.postMessage({
             type: 'js3d_snapshot', image: imageData, mask: maskData, normal: normalData,
@@ -891,6 +911,17 @@ function captureSnapshot() {
         console.error('[JS3D] Snapshot error:', err);
     }
 }
+
+// ─── Auto-snapshot on interaction changes ────────────────────────────────────
+let _autoSnapTimer = null;
+function scheduleAutoSnapshot() {
+    clearTimeout(_autoSnapTimer);
+    _autoSnapTimer = setTimeout(() => {
+        if (!contextLost && currentModel) captureSnapshot();
+    }, 800);
+}
+orbitControls.addEventListener('end', scheduleAutoSnapshot);
+transformControls.addEventListener('mouseUp', scheduleAutoSnapshot);
 
 // ─── Reset ───────────────────────────────────────────────────────────────────
 document.getElementById('btn-fullscreen').addEventListener('click', () => {
