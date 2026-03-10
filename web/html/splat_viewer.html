@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JS3D Gaussian Splatting Viewer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #ccc; }
+#canvas-container { width: 100%; height: 100%; position: relative; }
+#viewer-canvas { display: block; width: 100%; height: 100%; }
+#loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 14px; color: #888; display: none; text-align: center; line-height: 1.6; }
+#loading.active { display: block; }
+#progress-bar { width: 200px; height: 4px; background: #333; border-radius: 2px; margin: 8px auto 0; overflow: hidden; }
+#progress-fill { width: 0%; height: 100%; background: #6a9eff; transition: width 0.2s; }
+
+.menu-bar { position: absolute; top: 10px; display: flex; flex-direction: column; gap: 4px; z-index: 100; }
+.menu-bar.left { left: 10px; }
+.menu-bar.right { right: 10px; }
+.menu-btn { width: 36px; height: 36px; border: 1px solid #444; border-radius: 6px; background: rgba(30,30,30,0.85); color: #ccc; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); transition: background 0.15s; }
+.menu-btn:hover { background: rgba(60,60,60,0.9); border-color: #666; }
+.menu-btn.active { background: rgba(80,120,200,0.5); border-color: #6a9eff; color: #fff; }
+
+.panel { position: absolute; top: 10px; left: 56px; background: rgba(20,20,20,0.92); border: 1px solid #444; border-radius: 8px; padding: 12px; min-width: 200px; backdrop-filter: blur(8px); z-index: 99; display: none; font-size: 12px; }
+.panel.visible { display: block; }
+.panel h3 { font-size: 12px; font-weight: 600; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #333; }
+.panel-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.panel-row label { font-size: 11px; color: #999; margin-right: 8px; }
+.panel-row input[type="color"] { width: 28px; height: 22px; border: 1px solid #555; border-radius: 4px; background: none; cursor: pointer; }
+.panel-row input[type="range"] { flex: 1; max-width: 120px; accent-color: #6a9eff; }
+.panel-row .val { font-size: 10px; color: #666; min-width: 30px; text-align: right; }
+
+#info-bar { position: absolute; bottom: 10px; right: 10px; font-size: 10px; color: #555; z-index: 50; text-align: right; }
+#controls-hint { position: absolute; bottom: 10px; left: 10px; font-size: 10px; color: #444; z-index: 50; }
+</style>
+</head>
+<body>
+<div id="canvas-container">
+    <div id="loading" class="active">
+        Drop a Gaussian Splatting .ply or .splat file
+        <div id="progress-bar"><div id="progress-fill"></div></div>
+    </div>
+
+    <div class="menu-bar left">
+        <button class="menu-btn" id="btn-settings" title="Settings">&#9881;</button>
+    </div>
+
+    <div class="menu-bar right">
+        <button class="menu-btn" id="btn-snapshot" title="Capture snapshot">&#128248;</button>
+        <button class="menu-btn" id="btn-reset" title="Reset view">&#8634;</button>
+    </div>
+
+    <div class="panel" id="panel-settings">
+        <h3>Gaussian Splatting Settings</h3>
+        <div class="panel-row"><label>Background</label><input type="color" id="opt-bg" value="#1a1a1a"></div>
+        <div class="panel-row"><label>Point Scale</label><input type="range" id="opt-point-scale" min="0.1" max="3" step="0.05" value="1.0"><span class="val" id="val-point-scale">1.0</span></div>
+    </div>
+
+    <div id="info-bar">JS3D Splat Viewer</div>
+    <div id="controls-hint">LMB: Orbit &middot; RMB: Pan &middot; Scroll: Zoom</div>
+</div>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://esm.sh/three@0.170.0",
+        "three/addons/": "https://esm.sh/three@0.170.0/examples/jsm/"
+    }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+
+const container = document.getElementById('canvas-container');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+container.insertBefore(renderer.domElement, container.firstChild);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a1a);
+
+const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.01, 500);
+camera.position.set(0, 1, 3);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(0, 0, 0);
+
+let currentPoints = null;
+let splatViewer = null;
+let useGSplatLib = false;
+
+async function loadSplatFile(url, format) {
+    document.getElementById('loading').classList.add('active');
+    document.getElementById('loading').firstChild.textContent = 'Loading Gaussian Splatting data...';
+    document.getElementById('progress-fill').style.width = '0%';
+
+    if (currentPoints) {
+        scene.remove(currentPoints);
+        if (currentPoints.geometry) currentPoints.geometry.dispose();
+        if (currentPoints.material) currentPoints.material.dispose();
+        currentPoints = null;
+    }
+
+    try {
+        await loadAsPointCloud(url);
+    } catch (err) {
+        console.error('[JS3D Splat]', err);
+        document.getElementById('loading').firstChild.textContent = 'Error: ' + err.message;
+    }
+}
+
+async function loadAsPointCloud(url) {
+    const plyLoader = new PLYLoader();
+
+    return new Promise((resolve, reject) => {
+        plyLoader.load(url, (geometry) => {
+            document.getElementById('progress-fill').style.width = '80%';
+
+            const vertCount = geometry.getAttribute('position')?.count || 0;
+            const hasColor = geometry.hasAttribute('color');
+
+            let material;
+            if (hasColor) {
+                material = new THREE.PointsMaterial({
+                    size: 0.005,
+                    vertexColors: true,
+                    sizeAttenuation: true,
+                    transparent: true,
+                    opacity: 0.9,
+                    depthWrite: false,
+                    blending: THREE.AdditiveBlending,
+                });
+            } else {
+                material = new THREE.PointsMaterial({
+                    size: 0.005,
+                    color: 0x88aaff,
+                    sizeAttenuation: true,
+                    transparent: true,
+                    opacity: 0.8,
+                });
+            }
+
+            currentPoints = new THREE.Points(geometry, material);
+
+            const box = new THREE.Box3().setFromObject(currentPoints);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            if (maxDim > 0) {
+                const s = 3.0 / maxDim;
+                currentPoints.scale.setScalar(s);
+                currentPoints.position.sub(center.multiplyScalar(s));
+            }
+
+            scene.add(currentPoints);
+            controls.target.set(0, 0, 0);
+            camera.position.set(0, 1, 3);
+            controls.update();
+
+            document.getElementById('loading').classList.remove('active');
+            document.getElementById('progress-fill').style.width = '100%';
+            document.getElementById('info-bar').textContent = `Points: ${vertCount.toLocaleString()} | GS Point Cloud`;
+
+            resolve();
+        }, (xhr) => {
+            if (xhr.total > 0) {
+                const pct = Math.round((xhr.loaded / xhr.total) * 70);
+                document.getElementById('progress-fill').style.width = pct + '%';
+            }
+        }, (err) => {
+            reject(err);
+        });
+    });
+}
+
+// Settings panel
+let settingsOpen = false;
+document.getElementById('btn-settings').addEventListener('click', () => {
+    settingsOpen = !settingsOpen;
+    document.getElementById('panel-settings').classList.toggle('visible', settingsOpen);
+    document.getElementById('btn-settings').classList.toggle('active', settingsOpen);
+});
+
+document.getElementById('opt-bg').addEventListener('input', (e) => {
+    scene.background = new THREE.Color(e.target.value);
+});
+
+document.getElementById('opt-point-scale').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('val-point-scale').textContent = v.toFixed(2);
+    if (currentPoints?.material) {
+        currentPoints.material.size = 0.005 * v;
+    }
+});
+
+// Snapshot
+document.getElementById('btn-snapshot').addEventListener('click', () => {
+    renderer.render(scene, camera);
+    const imageData = renderer.domElement.toDataURL('image/png');
+    window.parent.postMessage({
+        type: 'js3d_snapshot',
+        image: imageData,
+        mask: '',
+        normal: '',
+        camera: {
+            cameraType: 'perspective',
+            fov: camera.fov,
+            position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+            target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
+            zoom: camera.zoom,
+        },
+    }, '*');
+});
+
+// Reset
+document.getElementById('btn-reset').addEventListener('click', () => {
+    camera.position.set(0, 1, 3);
+    controls.target.set(0, 0, 0);
+    controls.update();
+});
+
+// Resize
+function onResize() {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+new ResizeObserver(onResize).observe(container);
+
+// Render loop
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+}
+animate();
+
+// Message handler
+window.addEventListener('message', (e) => {
+    const msg = e.data;
+    if (!msg || !msg.type) return;
+    if (msg.type === 'js3d_load') {
+        loadSplatFile(msg.url, msg.format);
+    }
+    if (msg.type === 'js3d_capture') {
+        document.getElementById('btn-snapshot').click();
+    }
+});
+
+window.parent.postMessage({ type: 'js3d_ready' }, '*');
+</script>
+</body>
+</html>

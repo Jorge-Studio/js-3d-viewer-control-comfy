@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JS3D Viewer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #ccc; }
+#canvas-container { width: 100%; height: 100%; position: relative; }
+canvas { display: block; width: 100%; height: 100%; }
+#loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 14px; color: #888; display: none; }
+#loading.active { display: block; }
+
+/* Side menus */
+.menu-bar { position: absolute; top: 10px; display: flex; flex-direction: column; gap: 4px; z-index: 100; }
+.menu-bar.left { left: 10px; }
+.menu-bar.right { right: 10px; }
+.menu-btn { width: 36px; height: 36px; border: 1px solid #444; border-radius: 6px; background: rgba(30,30,30,0.85); color: #ccc; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); transition: background 0.15s, border-color 0.15s; }
+.menu-btn:hover { background: rgba(60,60,60,0.9); border-color: #666; }
+.menu-btn.active { background: rgba(80,120,200,0.5); border-color: #6a9eff; color: #fff; }
+
+/* Panels */
+.panel { position: absolute; top: 10px; background: rgba(20,20,20,0.92); border: 1px solid #444; border-radius: 8px; padding: 12px; min-width: 200px; max-width: 260px; backdrop-filter: blur(8px); z-index: 99; display: none; font-size: 12px; }
+.panel.left-panel { left: 56px; }
+.panel.right-panel { right: 56px; }
+.panel.visible { display: block; }
+.panel h3 { font-size: 12px; font-weight: 600; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #333; }
+.panel-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.panel-row label { font-size: 11px; color: #999; flex-shrink: 0; margin-right: 8px; }
+.panel-row input[type="range"] { flex: 1; max-width: 120px; accent-color: #6a9eff; }
+.panel-row input[type="color"] { width: 28px; height: 22px; border: 1px solid #555; border-radius: 4px; background: none; cursor: pointer; }
+.panel-row input[type="checkbox"] { accent-color: #6a9eff; }
+.panel-row select { background: #2a2a2a; color: #ccc; border: 1px solid #555; border-radius: 4px; padding: 2px 4px; font-size: 11px; }
+.panel-row .val { font-size: 10px; color: #666; min-width: 30px; text-align: right; }
+
+/* Gizmo toolbar */
+#gizmo-bar { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; z-index: 100; }
+#gizmo-bar .menu-btn { font-size: 13px; font-weight: 600; width: 32px; height: 32px; }
+
+/* Axis helper */
+#axis-widget { position: absolute; bottom: 10px; left: 10px; width: 80px; height: 80px; z-index: 50; }
+
+/* Info bar */
+#info-bar { position: absolute; bottom: 10px; right: 10px; font-size: 10px; color: #555; z-index: 50; text-align: right; line-height: 1.4; }
+</style>
+</head>
+<body>
+<div id="canvas-container">
+    <div id="loading" class="active">Drop a 3D file or select one above</div>
+
+    <!-- Left menu -->
+    <div class="menu-bar left">
+        <button class="menu-btn" id="btn-menu" title="Menu">&#9776;</button>
+        <button class="menu-btn" id="btn-scene" title="Scene">&#9633;</button>
+        <button class="menu-btn" id="btn-model" title="Model">&#11042;</button>
+        <button class="menu-btn" id="btn-camera" title="Camera">&#128247;</button>
+        <button class="menu-btn" id="btn-light" title="Light">&#9728;</button>
+    </div>
+
+    <!-- Right menu -->
+    <div class="menu-bar right">
+        <button class="menu-btn" id="btn-snapshot" title="Capture snapshot">&#128248;</button>
+        <button class="menu-btn" id="btn-fullscreen" title="Reset view">&#8634;</button>
+    </div>
+
+    <!-- Scene Panel -->
+    <div class="panel left-panel" id="panel-scene">
+        <h3>Scene</h3>
+        <div class="panel-row"><label>Grid</label><input type="checkbox" id="opt-grid" checked></div>
+        <div class="panel-row"><label>Background</label><input type="color" id="opt-bg-color" value="#1a1a1a"></div>
+        <div class="panel-row"><label>Axes</label><input type="checkbox" id="opt-axes" checked></div>
+    </div>
+
+    <!-- Model Panel -->
+    <div class="panel left-panel" id="panel-model">
+        <h3>Model</h3>
+        <div class="panel-row"><label>Material</label>
+            <select id="opt-material"><option value="original">Original</option><option value="wireframe">Wireframe</option><option value="normal">Normal Map</option><option value="points">Point Cloud</option><option value="flat">Flat Shading</option></select>
+        </div>
+        <div class="panel-row"><label>Up Axis</label>
+            <select id="opt-up-axis"><option value="Y" selected>Y-Up</option><option value="Z">Z-Up</option></select>
+        </div>
+        <div class="panel-row"><label>Opacity</label><input type="range" id="opt-opacity" min="0" max="1" step="0.01" value="1"><span class="val" id="val-opacity">1.0</span></div>
+        <div class="panel-row"><label>Scale</label><input type="range" id="opt-scale" min="0.01" max="5" step="0.01" value="1"><span class="val" id="val-scale">1.0</span></div>
+    </div>
+
+    <!-- Camera Panel -->
+    <div class="panel left-panel" id="panel-camera">
+        <h3>Camera</h3>
+        <div class="panel-row"><label>Type</label>
+            <select id="opt-cam-type"><option value="perspective" selected>Perspective</option><option value="orthographic">Orthographic</option></select>
+        </div>
+        <div class="panel-row"><label>FOV</label><input type="range" id="opt-fov" min="5" max="120" step="1" value="50"><span class="val" id="val-fov">50</span></div>
+    </div>
+
+    <!-- Light Panel -->
+    <div class="panel left-panel" id="panel-light">
+        <h3>Lighting</h3>
+        <div class="panel-row"><label>Ambient</label><input type="range" id="opt-ambient" min="0" max="3" step="0.05" value="0.6"><span class="val" id="val-ambient">0.6</span></div>
+        <div class="panel-row"><label>Directional</label><input type="range" id="opt-directional" min="0" max="5" step="0.05" value="1.0"><span class="val" id="val-directional">1.0</span></div>
+        <div class="panel-row"><label>Light Color</label><input type="color" id="opt-light-color" value="#ffffff"></div>
+    </div>
+
+    <!-- Gizmo toolbar -->
+    <div id="gizmo-bar">
+        <button class="menu-btn active" id="gz-translate" title="Translate (T)">T</button>
+        <button class="menu-btn" id="gz-rotate" title="Rotate (R)">R</button>
+        <button class="menu-btn" id="gz-scale" title="Scale (S)">S</button>
+        <button class="menu-btn" id="gz-none" title="Orbit only (Q)">Q</button>
+    </div>
+
+    <div id="axis-widget"></div>
+    <div id="info-bar">JS3D Viewer</div>
+</div>
+
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://esm.sh/three@0.170.0",
+        "three/addons/": "https://esm.sh/three@0.170.0/examples/jsm/"
+    }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+
+// ─── Scene setup ───
+const container = document.getElementById('canvas-container');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+container.insertBefore(renderer.domElement, container.firstChild);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a1a);
+
+// Camera
+let camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.01, 1000);
+camera.position.set(2, 1.5, 3);
+
+// Orbit controls
+const orbitControls = new OrbitControls(camera, renderer.domElement);
+orbitControls.enableDamping = true;
+orbitControls.dampingFactor = 0.08;
+orbitControls.target.set(0, 0, 0);
+
+// Transform controls (gizmo)
+const transformControls = new TransformControls(camera, renderer.domElement);
+scene.add(transformControls);
+transformControls.addEventListener('dragging-changed', (e) => {
+    orbitControls.enabled = !e.value;
+});
+
+// Lights
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambientLight);
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+dirLight.position.set(5, 10, 7);
+dirLight.castShadow = true;
+scene.add(dirLight);
+const hemiLight = new THREE.HemisphereLight(0xb1e1ff, 0xb97a20, 0.3);
+scene.add(hemiLight);
+
+// Grid
+const gridHelper = new THREE.GridHelper(20, 40, 0x444444, 0x2a2a2a);
+scene.add(gridHelper);
+
+// Axes
+const axesHelper = new THREE.AxesHelper(2);
+scene.add(axesHelper);
+
+// ─── State ───
+let currentModel = null;
+let originalMaterials = new Map();
+let gizmoMode = 'translate';
+
+// ─── Loaders ───
+const gltfLoader = new GLTFLoader();
+const objLoader = new OBJLoader();
+const stlLoader = new STLLoader();
+const plyLoader = new PLYLoader();
+const fbxLoader = new FBXLoader();
+
+function clearModel() {
+    if (currentModel) {
+        transformControls.detach();
+        scene.remove(currentModel);
+        currentModel.traverse((child) => {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+                if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                else child.material.dispose();
+            }
+        });
+        currentModel = null;
+        originalMaterials.clear();
+    }
+}
+
+function centerAndScale(object) {
+    const box = new THREE.Box3().setFromObject(object);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    if (maxDim > 0) {
+        const s = 2.0 / maxDim;
+        object.scale.multiplyScalar(s);
+        object.position.sub(center.multiplyScalar(s));
+    }
+    return object;
+}
+
+function storeOriginalMaterials(object) {
+    originalMaterials.clear();
+    object.traverse((child) => {
+        if (child.isMesh && child.material) {
+            originalMaterials.set(child.uuid, child.material.clone ? child.material.clone() : child.material);
+        }
+    });
+}
+
+function addModelToScene(object) {
+    clearModel();
+    centerAndScale(object);
+    storeOriginalMaterials(object);
+    scene.add(object);
+    currentModel = object;
+    transformControls.attach(object);
+    orbitControls.target.set(0, 0, 0);
+    camera.position.set(2, 1.5, 3);
+    orbitControls.update();
+    updateInfoBar();
+    document.getElementById('loading').classList.remove('active');
+}
+
+function loadModel(url, format) {
+    document.getElementById('loading').classList.add('active');
+    document.getElementById('loading').textContent = 'Loading...';
+
+    switch (format) {
+        case 'glb':
+        case 'gltf':
+            gltfLoader.load(url, (gltf) => {
+                addModelToScene(gltf.scene);
+            }, undefined, (err) => { showError(err); });
+            break;
+
+        case 'obj':
+            objLoader.load(url, (obj) => {
+                addModelToScene(obj);
+            }, undefined, (err) => { showError(err); });
+            break;
+
+        case 'stl':
+            stlLoader.load(url, (geometry) => {
+                geometry.computeVertexNormals();
+                const mat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.3, roughness: 0.6 });
+                const mesh = new THREE.Mesh(geometry, mat);
+                addModelToScene(mesh);
+            }, undefined, (err) => { showError(err); });
+            break;
+
+        case 'ply':
+            plyLoader.load(url, (geometry) => {
+                geometry.computeVertexNormals();
+                let object;
+                if (geometry.index !== null) {
+                    const mat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.3, roughness: 0.6, vertexColors: geometry.hasAttribute('color') });
+                    object = new THREE.Mesh(geometry, mat);
+                } else {
+                    const mat = new THREE.PointsMaterial({ size: 0.01, vertexColors: geometry.hasAttribute('color'), sizeAttenuation: true });
+                    object = new THREE.Points(geometry, mat);
+                }
+                addModelToScene(object);
+            }, undefined, (err) => { showError(err); });
+            break;
+
+        case 'fbx':
+            fbxLoader.load(url, (fbx) => {
+                addModelToScene(fbx);
+            }, undefined, (err) => { showError(err); });
+            break;
+
+        default:
+            gltfLoader.load(url, (gltf) => {
+                addModelToScene(gltf.scene);
+            }, undefined, (err) => { showError(err); });
+    }
+}
+
+function showError(err) {
+    console.error('[JS3D]', err);
+    document.getElementById('loading').textContent = 'Error loading model';
+    document.getElementById('loading').classList.add('active');
+}
+
+function updateInfoBar() {
+    let info = 'JS3D Viewer';
+    if (currentModel) {
+        let verts = 0, faces = 0;
+        currentModel.traverse((child) => {
+            if (child.geometry) {
+                const pos = child.geometry.getAttribute('position');
+                if (pos) verts += pos.count;
+                if (child.geometry.index) faces += child.geometry.index.count / 3;
+            }
+        });
+        info = `Verts: ${verts.toLocaleString()}`;
+        if (faces > 0) info += ` | Faces: ${faces.toLocaleString()}`;
+    }
+    document.getElementById('info-bar').textContent = info;
+}
+
+// ─── Panel toggles ───
+const panels = { scene: 'panel-scene', model: 'panel-model', camera: 'panel-camera', light: 'panel-light' };
+let activePanel = null;
+
+function togglePanel(name) {
+    const panelId = panels[name];
+    Object.values(panels).forEach(id => document.getElementById(id).classList.remove('visible'));
+    ['btn-scene', 'btn-model', 'btn-camera', 'btn-light'].forEach(id => document.getElementById(id).classList.remove('active'));
+
+    if (activePanel === name) {
+        activePanel = null;
+        return;
+    }
+    activePanel = name;
+    document.getElementById(panelId).classList.add('visible');
+    document.getElementById('btn-' + name).classList.add('active');
+}
+
+document.getElementById('btn-menu').addEventListener('click', () => {
+    const allVisible = Object.values(panels).some(id => document.getElementById(id).classList.contains('visible'));
+    if (allVisible) {
+        Object.values(panels).forEach(id => document.getElementById(id).classList.remove('visible'));
+        ['btn-scene', 'btn-model', 'btn-camera', 'btn-light'].forEach(id => document.getElementById(id).classList.remove('active'));
+        activePanel = null;
+    }
+});
+document.getElementById('btn-scene').addEventListener('click', () => togglePanel('scene'));
+document.getElementById('btn-model').addEventListener('click', () => togglePanel('model'));
+document.getElementById('btn-camera').addEventListener('click', () => togglePanel('camera'));
+document.getElementById('btn-light').addEventListener('click', () => togglePanel('light'));
+
+// ─── Scene options ───
+document.getElementById('opt-grid').addEventListener('change', (e) => { gridHelper.visible = e.target.checked; });
+document.getElementById('opt-bg-color').addEventListener('input', (e) => { scene.background = new THREE.Color(e.target.value); });
+document.getElementById('opt-axes').addEventListener('change', (e) => { axesHelper.visible = e.target.checked; });
+
+// ─── Model options ───
+document.getElementById('opt-material').addEventListener('change', (e) => {
+    if (!currentModel) return;
+    const mode = e.target.value;
+    currentModel.traverse((child) => {
+        if (!child.isMesh) return;
+        switch (mode) {
+            case 'original': {
+                const orig = originalMaterials.get(child.uuid);
+                if (orig) child.material = orig.clone();
+                break;
+            }
+            case 'wireframe':
+                child.material = new THREE.MeshBasicMaterial({ color: 0x00ff88, wireframe: true });
+                break;
+            case 'normal':
+                child.material = new THREE.MeshNormalMaterial();
+                break;
+            case 'points': {
+                const geo = child.geometry;
+                const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.01, color: 0x88aaff }));
+                child.visible = false;
+                currentModel.add(pts);
+                break;
+            }
+            case 'flat':
+                child.material = new THREE.MeshStandardMaterial({ color: 0x888888, flatShading: true, metalness: 0.2, roughness: 0.8 });
+                break;
+        }
+    });
+});
+
+document.getElementById('opt-up-axis').addEventListener('change', (e) => {
+    if (!currentModel) return;
+    currentModel.rotation.set(0, 0, 0);
+    if (e.target.value === 'Z') {
+        currentModel.rotation.x = -Math.PI / 2;
+    }
+});
+
+document.getElementById('opt-opacity').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('val-opacity').textContent = v.toFixed(2);
+    if (!currentModel) return;
+    currentModel.traverse((child) => {
+        if (child.material) {
+            child.material.transparent = v < 1;
+            child.material.opacity = v;
+        }
+    });
+});
+
+document.getElementById('opt-scale').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('val-scale').textContent = v.toFixed(2);
+    if (!currentModel) return;
+    currentModel.scale.setScalar(v * (2.0 / getModelMaxDim()));
+});
+
+function getModelMaxDim() {
+    if (!currentModel) return 1;
+    const box = new THREE.Box3().setFromObject(currentModel);
+    const size = box.getSize(new THREE.Vector3());
+    return Math.max(size.x, size.y, size.z) || 1;
+}
+
+// ─── Camera options ───
+document.getElementById('opt-cam-type').addEventListener('change', (e) => {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    const oldPos = camera.position.clone();
+    const oldTarget = orbitControls.target.clone();
+
+    if (e.target.value === 'orthographic') {
+        const frustum = 3;
+        const aspect = w / h;
+        camera = new THREE.OrthographicCamera(-frustum * aspect, frustum * aspect, frustum, -frustum, 0.01, 1000);
+    } else {
+        camera = new THREE.PerspectiveCamera(parseFloat(document.getElementById('opt-fov').value), w / h, 0.01, 1000);
+    }
+    camera.position.copy(oldPos);
+    orbitControls.object = camera;
+    orbitControls.target.copy(oldTarget);
+    transformControls.camera = camera;
+    orbitControls.update();
+});
+
+document.getElementById('opt-fov').addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    document.getElementById('val-fov').textContent = v;
+    if (camera.isPerspectiveCamera) {
+        camera.fov = v;
+        camera.updateProjectionMatrix();
+    }
+});
+
+// ─── Light options ───
+document.getElementById('opt-ambient').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('val-ambient').textContent = v.toFixed(2);
+    ambientLight.intensity = v;
+});
+
+document.getElementById('opt-directional').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('val-directional').textContent = v.toFixed(2);
+    dirLight.intensity = v;
+});
+
+document.getElementById('opt-light-color').addEventListener('input', (e) => {
+    const c = new THREE.Color(e.target.value);
+    dirLight.color = c;
+    ambientLight.color = c;
+});
+
+// ─── Gizmo ───
+function setGizmoMode(mode) {
+    gizmoMode = mode;
+    ['gz-translate', 'gz-rotate', 'gz-scale', 'gz-none'].forEach(id => document.getElementById(id).classList.remove('active'));
+    if (mode === 'none') {
+        transformControls.detach();
+        document.getElementById('gz-none').classList.add('active');
+    } else {
+        if (currentModel) transformControls.attach(currentModel);
+        transformControls.setMode(mode);
+        document.getElementById('gz-' + mode).classList.add('active');
+    }
+}
+
+document.getElementById('gz-translate').addEventListener('click', () => setGizmoMode('translate'));
+document.getElementById('gz-rotate').addEventListener('click', () => setGizmoMode('rotate'));
+document.getElementById('gz-scale').addEventListener('click', () => setGizmoMode('scale'));
+document.getElementById('gz-none').addEventListener('click', () => setGizmoMode('none'));
+
+document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    switch (e.key.toLowerCase()) {
+        case 't': setGizmoMode('translate'); break;
+        case 'r': setGizmoMode('rotate'); break;
+        case 's': setGizmoMode('scale'); break;
+        case 'q': setGizmoMode('none'); break;
+    }
+});
+
+// ─── Snapshot ───
+document.getElementById('btn-snapshot').addEventListener('click', captureSnapshot);
+
+function captureSnapshot() {
+    renderer.render(scene, camera);
+    const imageData = renderer.domElement.toDataURL('image/png');
+
+    const prevBg = scene.background;
+    scene.background = null;
+
+    if (currentModel) {
+        const savedMats = new Map();
+        currentModel.traverse((child) => {
+            if (child.isMesh && child.material) {
+                savedMats.set(child.uuid, child.material);
+                child.material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            }
+        });
+        gridHelper.visible = false;
+        axesHelper.visible = false;
+        transformControls.visible = false;
+        renderer.render(scene, camera);
+        const maskData = renderer.domElement.toDataURL('image/png');
+
+        currentModel.traverse((child) => {
+            if (child.isMesh) {
+                child.material = new THREE.MeshNormalMaterial();
+            }
+        });
+        renderer.render(scene, camera);
+        const normalData = renderer.domElement.toDataURL('image/png');
+
+        currentModel.traverse((child) => {
+            if (child.isMesh && savedMats.has(child.uuid)) {
+                child.material = savedMats.get(child.uuid);
+            }
+        });
+        gridHelper.visible = document.getElementById('opt-grid').checked;
+        axesHelper.visible = document.getElementById('opt-axes').checked;
+        transformControls.visible = true;
+        scene.background = prevBg;
+
+        window.parent.postMessage({
+            type: 'js3d_snapshot',
+            image: imageData,
+            mask: maskData,
+            normal: normalData,
+            camera: {
+                cameraType: camera.isPerspectiveCamera ? 'perspective' : 'orthographic',
+                fov: camera.fov || 50,
+                position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+                target: { x: orbitControls.target.x, y: orbitControls.target.y, z: orbitControls.target.z },
+                zoom: camera.zoom,
+            },
+        }, '*');
+    } else {
+        scene.background = prevBg;
+        window.parent.postMessage({ type: 'js3d_snapshot', image: imageData, mask: '', normal: '', camera: {} }, '*');
+    }
+}
+
+// ─── Reset view ───
+document.getElementById('btn-fullscreen').addEventListener('click', () => {
+    camera.position.set(2, 1.5, 3);
+    orbitControls.target.set(0, 0, 0);
+    orbitControls.update();
+});
+
+// ─── Resize ───
+function onResize() {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    renderer.setSize(w, h);
+    if (camera.isPerspectiveCamera) {
+        camera.aspect = w / h;
+    } else {
+        const frustum = 3;
+        const aspect = w / h;
+        camera.left = -frustum * aspect;
+        camera.right = frustum * aspect;
+        camera.top = frustum;
+        camera.bottom = -frustum;
+    }
+    camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize);
+new ResizeObserver(onResize).observe(container);
+
+// ─── Render loop ───
+function animate() {
+    requestAnimationFrame(animate);
+    orbitControls.update();
+    renderer.render(scene, camera);
+}
+animate();
+
+// ─── Message handler ───
+window.addEventListener('message', (e) => {
+    const msg = e.data;
+    if (!msg || !msg.type) return;
+    if (msg.type === 'js3d_load') {
+        loadModel(msg.url, msg.format);
+    }
+    if (msg.type === 'js3d_capture') {
+        captureSnapshot();
+    }
+});
+
+window.parent.postMessage({ type: 'js3d_ready' }, '*');
+</script>
+</body>
+</html>
