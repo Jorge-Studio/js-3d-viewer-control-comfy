@@ -68,6 +68,7 @@ canvas { display: block; width: 100%; height: 100%; }
         <div class="panel-row"><label>Grid</label><input type="checkbox" id="opt-grid" checked></div>
         <div class="panel-row"><label>Background</label><input type="color" id="opt-bg-color" value="#1a1a1a"></div>
         <div class="panel-row"><label>Axes</label><input type="checkbox" id="opt-axes" checked></div>
+        <div class="panel-row" id="bg-image-row" style="display:none"><label>BG Image</label><input type="checkbox" id="opt-bg-image" checked></div>
     </div>
 
     <!-- Model Panel -->
@@ -227,6 +228,30 @@ let originalMaterials = new Map();
 let isGaussianSplat = false;
 let isLargePointCloud = false;
 let loadingAbort = null;
+let hasBackgroundImage = false;
+let savedBgColor = '#1a1a1a';
+
+function setBackgroundImage(url) {
+    if (url) {
+        hasBackgroundImage = true;
+        container.style.backgroundImage = `url(${url})`;
+        container.style.backgroundSize = 'contain';
+        container.style.backgroundPosition = 'center';
+        container.style.backgroundRepeat = 'no-repeat';
+        container.style.backgroundColor = '#111';
+        scene.background = null;
+        renderer.setClearColor(0x000000, 0);
+        document.getElementById('bg-image-row').style.display = 'flex';
+        document.getElementById('opt-bg-image').checked = true;
+    } else {
+        hasBackgroundImage = false;
+        container.style.backgroundImage = 'none';
+        container.style.backgroundColor = '';
+        scene.background = new THREE.Color(savedBgColor);
+        renderer.setClearColor(0x000000, 1);
+        document.getElementById('bg-image-row').style.display = 'none';
+    }
+}
 
 const gltfLoader = new GLTFLoader();
 const objLoader = new OBJLoader();
@@ -648,8 +673,25 @@ document.getElementById('btn-light').addEventListener('click', () => togglePanel
 
 // ─── Scene options ───────────────────────────────────────────────────────────
 document.getElementById('opt-grid').addEventListener('change', (e) => { gridHelper.visible = e.target.checked; });
-document.getElementById('opt-bg-color').addEventListener('input', (e) => { scene.background = new THREE.Color(e.target.value); });
+document.getElementById('opt-bg-color').addEventListener('input', (e) => {
+    savedBgColor = e.target.value;
+    if (!hasBackgroundImage) {
+        scene.background = new THREE.Color(e.target.value);
+    }
+});
 document.getElementById('opt-axes').addEventListener('change', (e) => { axesHelper.visible = e.target.checked; });
+document.getElementById('opt-bg-image').addEventListener('change', (e) => {
+    if (hasBackgroundImage) {
+        container.style.backgroundImage = e.target.checked ? container.style.backgroundImage : 'none';
+        if (!e.target.checked) {
+            scene.background = new THREE.Color(savedBgColor);
+            renderer.setClearColor(0x000000, 1);
+        } else {
+            scene.background = null;
+            renderer.setClearColor(0x000000, 0);
+        }
+    }
+});
 
 // ─── Model options ───────────────────────────────────────────────────────────
 document.getElementById('opt-material').addEventListener('change', (e) => {
@@ -891,6 +933,9 @@ window.addEventListener('message', (e) => {
     if (!msg || !msg.type) return;
     if (msg.type === 'js3d_load') loadModel(msg.url, msg.format);
     if (msg.type === 'js3d_capture') captureSnapshot();
+    if (msg.type === 'js3d_set_background') {
+        setBackgroundImage(msg.url || null);
+    }
     if (msg.type === 'js3d_set_camera') {
         try {
             const cam = msg.camera;

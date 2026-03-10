@@ -42,6 +42,44 @@ function buildViewUrl(filePath) {
     return `/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`;
 }
 
+function findBackgroundImageUrl(loaderNode) {
+    try {
+        const graph = app.graph;
+        if (!graph || !loaderNode.outputs) return null;
+
+        for (const output of loaderNode.outputs) {
+            if (!output.links) continue;
+            for (const linkId of output.links) {
+                const link = graph.links[linkId];
+                if (!link) continue;
+                const targetNode = graph.getNodeById(link.target_id);
+                if (!targetNode || targetNode.type !== "JS3D_CompositeOnImage")
+                    continue;
+
+                const bgInput = targetNode.inputs?.find(
+                    (inp) => inp.name === "background"
+                );
+                if (!bgInput || !bgInput.link) continue;
+
+                const bgLink = graph.links[bgInput.link];
+                if (!bgLink) continue;
+                const bgSourceNode = graph.getNodeById(bgLink.origin_id);
+                if (!bgSourceNode) continue;
+
+                if (bgSourceNode.type === "LoadImage") {
+                    const imgWidget = bgSourceNode.widgets?.find(
+                        (w) => w.name === "image"
+                    );
+                    if (imgWidget && imgWidget.value) {
+                        return `/view?filename=${encodeURIComponent(imgWidget.value)}&type=input&subfolder=`;
+                    }
+                }
+            }
+        }
+    } catch (_) {}
+    return null;
+}
+
 app.registerExtension({
     name: "JS3D.ViewerControl",
 
@@ -148,8 +186,21 @@ app.registerExtension({
                 }
             });
 
+            this._js3dLastBgUrl = null;
+
             this._pollInterval = setInterval(() => {
                 self._tryLoadCurrentFile();
+
+                if (isLoader) {
+                    const bgUrl = findBackgroundImageUrl(self);
+                    if (bgUrl !== self._js3dLastBgUrl) {
+                        self._js3dLastBgUrl = bgUrl;
+                        self._js3dIframe?.contentWindow?.postMessage(
+                            { type: "js3d_set_background", url: bgUrl },
+                            "*"
+                        );
+                    }
+                }
             }, 1500);
         };
 
