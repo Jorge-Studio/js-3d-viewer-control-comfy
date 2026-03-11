@@ -60,6 +60,9 @@ canvas { display: block; width: 100%; height: 100%; }
     <div class="menu-bar right">
         <button class="menu-btn" id="btn-snapshot" title="Capture snapshot">&#128248;</button>
         <button class="menu-btn" id="btn-fullscreen" title="Reset view">&#8634;</button>
+        <button class="menu-btn" id="btn-view-front" title="Front view">F</button>
+        <button class="menu-btn" id="btn-view-top" title="Top view">&#8593;</button>
+        <button class="menu-btn" id="btn-view-side" title="Side view">&#8594;</button>
     </div>
 
     <!-- Scene Panel -->
@@ -69,6 +72,9 @@ canvas { display: block; width: 100%; height: 100%; }
         <div class="panel-row"><label>Background</label><input type="color" id="opt-bg-color" value="#1a1a1a"></div>
         <div class="panel-row"><label>Axes</label><input type="checkbox" id="opt-axes" checked></div>
         <div class="panel-row" id="bg-image-row" style="display:none"><label>BG Image</label><input type="checkbox" id="opt-bg-image" checked></div>
+        <div class="panel-row"><label>Image Ratio</label>
+            <select id="opt-image-ratio"><option value="free" selected>Free</option><option value="1:1">1:1</option><option value="16:9">16:9</option><option value="9:16">9:16</option><option value="4:3">4:3</option><option value="3:2">3:2</option></select>
+        </div>
     </div>
 
     <!-- Model Panel -->
@@ -78,7 +84,7 @@ canvas { display: block; width: 100%; height: 100%; }
             <select id="opt-material"><option value="original">Original</option><option value="wireframe">Wireframe</option><option value="normal">Normal Map</option><option value="points">Point Cloud</option><option value="flat">Flat Shading</option></select>
         </div>
         <div class="panel-row"><label>Up Axis</label>
-            <select id="opt-up-axis"><option value="Y" selected>Y-Up</option><option value="Z">Z-Up</option></select>
+            <select id="opt-up-axis"><option value="+Y" selected>+Y Up</option><option value="-Y">-Y Up</option><option value="+Z">+Z Up</option><option value="-Z">-Z Up</option><option value="+X">+X Up</option><option value="-X">-X Up</option></select>
         </div>
         <div class="panel-row"><label>Opacity</label><input type="range" id="opt-opacity" min="0" max="1" step="0.01" value="1"><span class="val" id="val-opacity">1.0</span></div>
         <div class="panel-row"><label>Point Size</label><input type="range" id="opt-point-size" min="0.0005" max="0.05" step="0.0005" value="0.003"><span class="val" id="val-point-size">0.003</span></div>
@@ -91,6 +97,7 @@ canvas { display: block; width: 100%; height: 100%; }
             <select id="opt-cam-type"><option value="perspective" selected>Perspective</option><option value="orthographic">Orthographic</option></select>
         </div>
         <div class="panel-row"><label>FOV</label><input type="range" id="opt-fov" min="5" max="120" step="1" value="50"><span class="val" id="val-fov">50</span></div>
+        <div class="panel-row"><label>Focal (mm)</label><input type="range" id="opt-focal" min="10" max="200" step="1" value="50"><span class="val" id="val-focal">50</span></div>
         <div class="panel-row"><label>Pos X</label><input type="number" id="cam-px" value="2" step="0.1"></div>
         <div class="panel-row"><label>Pos Y</label><input type="number" id="cam-py" value="1.5" step="0.1"></div>
         <div class="panel-row"><label>Pos Z</label><input type="number" id="cam-pz" value="3" step="0.1"></div>
@@ -230,6 +237,7 @@ let isLargePointCloud = false;
 let loadingAbort = null;
 let hasBackgroundImage = false;
 let savedBgColor = '#1a1a1a';
+let _currentFilename = '';
 
 function setBackgroundImage(url) {
     if (url) {
@@ -556,9 +564,12 @@ function updateInfoBar(vertexOverride) {
             }
         });
         if (vertexOverride) verts = vertexOverride;
-        info = `Verts: ${verts.toLocaleString()}`;
-        if (faces > 0) info += ` | Faces: ${faces.toLocaleString()}`;
-        if (isGaussianSplat) info += ' | Gaussian Splat';
+        const parts = [];
+        if (_currentFilename) parts.push(_currentFilename.split('/').pop());
+        parts.push(`Verts: ${verts.toLocaleString()}`);
+        if (faces > 0) parts.push(`Faces: ${faces.toLocaleString()}`);
+        if (isGaussianSplat) parts.push('Gaussian Splat');
+        info = parts.join(' | ');
     }
     document.getElementById('info-bar').textContent = info;
 }
@@ -714,8 +725,16 @@ document.getElementById('opt-material').addEventListener('change', (e) => {
 
 document.getElementById('opt-up-axis').addEventListener('change', (e) => {
     if (!currentModel) return;
-    currentModel.rotation.set(0, 0, 0);
-    if (e.target.value === 'Z') currentModel.rotation.x = -Math.PI / 2;
+    const PI = Math.PI;
+    switch (e.target.value) {
+        case '+Y': currentModel.rotation.set(0, 0, 0); break;
+        case '-Y': currentModel.rotation.set(PI, 0, 0); break;
+        case '+Z': currentModel.rotation.set(-PI/2, 0, 0); break;
+        case '-Z': currentModel.rotation.set(PI/2, 0, 0); break;
+        case '+X': currentModel.rotation.set(0, 0, PI/2); break;
+        case '-X': currentModel.rotation.set(0, 0, -PI/2); break;
+        default:   currentModel.rotation.set(0, 0, 0);
+    }
 });
 
 document.getElementById('opt-opacity').addEventListener('input', (e) => {
@@ -805,6 +824,49 @@ for (const id of ['light-px','light-py','light-pz']) {
     });
 }
 
+// ─── Focal length (mm) ↔ FOV conversion ─────────────────────────────────────
+const SENSOR_HEIGHT = 24; // 35mm full-frame equivalent
+document.getElementById('opt-focal').addEventListener('input', (e) => {
+    const focal = parseFloat(e.target.value);
+    document.getElementById('val-focal').textContent = focal;
+    if (camera.isPerspectiveCamera) {
+        const fov = 2 * THREE.MathUtils.radToDeg(Math.atan(SENSOR_HEIGHT / (2 * focal)));
+        camera.fov = fov;
+        camera.updateProjectionMatrix();
+        document.getElementById('opt-fov').value = Math.round(fov);
+        document.getElementById('val-fov').textContent = Math.round(fov);
+    }
+});
+
+// ─── Image ratio ─────────────────────────────────────────────────────────────
+document.getElementById('opt-image-ratio').addEventListener('change', (e) => {
+    const val = e.target.value;
+    if (val === 'free') {
+        container.style.aspectRatio = '';
+        return;
+    }
+    const [w, h] = val.split(':').map(Number);
+    container.style.aspectRatio = `${w}/${h}`;
+    setTimeout(onResize, 50);
+});
+
+// ─── View presets ────────────────────────────────────────────────────────────
+document.getElementById('btn-view-front').addEventListener('click', () => {
+    camera.position.set(0, 0, 4);
+    orbitControls.target.set(0, 0, 0);
+    orbitControls.update(); updateCamFields();
+});
+document.getElementById('btn-view-top').addEventListener('click', () => {
+    camera.position.set(0, 4, 0);
+    orbitControls.target.set(0, 0, 0);
+    orbitControls.update(); updateCamFields();
+});
+document.getElementById('btn-view-side').addEventListener('click', () => {
+    camera.position.set(4, 0, 0);
+    orbitControls.target.set(0, 0, 0);
+    orbitControls.update(); updateCamFields();
+});
+
 // ─── Gizmo ───────────────────────────────────────────────────────────────────
 let currentGizmoMode = 'none';
 
@@ -848,7 +910,7 @@ document.addEventListener('keydown', (e) => {
 // ─── Snapshot ────────────────────────────────────────────────────────────────
 document.getElementById('btn-snapshot').addEventListener('click', captureSnapshot);
 
-function captureSnapshot() {
+function captureSnapshot(targetWidth, targetHeight) {
     if (contextLost) return;
     try {
         const prevBg = scene.background;
@@ -860,6 +922,20 @@ function captureSnapshot() {
             tc: transformControls.visible,
             dirHelper: dirLightHelper.visible,
         };
+
+        const origW = container.clientWidth;
+        const origH = container.clientHeight;
+        const snapW = targetWidth && targetHeight ? targetWidth : origW;
+        const snapH = targetWidth && targetHeight ? targetHeight : origH;
+
+        renderer.setSize(snapW, snapH);
+        if (camera.isPerspectiveCamera) {
+            camera.aspect = snapW / snapH;
+        } else {
+            const f = 3, a = snapW / snapH;
+            camera.left = -f * a; camera.right = f * a; camera.top = f; camera.bottom = -f;
+        }
+        camera.updateProjectionMatrix();
 
         gridHelper.visible = false;
         axesHelper.visible = false;
@@ -897,8 +973,18 @@ function captureSnapshot() {
         transformControls.visible = savedVis.tc;
         dirLightHelper.visible = savedVis.dirHelper;
 
+        renderer.setSize(origW, origH);
+        if (camera.isPerspectiveCamera) {
+            camera.aspect = origW / origH;
+        } else {
+            const f = 3, a = origW / origH;
+            camera.left = -f * a; camera.right = f * a; camera.top = f; camera.bottom = -f;
+        }
+        camera.updateProjectionMatrix();
+
         window.parent.postMessage({
             type: 'js3d_snapshot', image: imageData, mask: maskData, normal: normalData,
+            width: snapW, height: snapH,
             camera: {
                 cameraType: camera.isPerspectiveCamera ? 'perspective' : 'orthographic',
                 fov: camera.fov || 50,
@@ -962,8 +1048,11 @@ animate();
 window.addEventListener('message', (e) => {
     const msg = e.data;
     if (!msg || !msg.type) return;
-    if (msg.type === 'js3d_load') loadModel(msg.url, msg.format);
-    if (msg.type === 'js3d_capture') captureSnapshot();
+    if (msg.type === 'js3d_load') {
+        if (msg.filename) _currentFilename = msg.filename;
+        loadModel(msg.url, msg.format);
+    }
+    if (msg.type === 'js3d_capture') captureSnapshot(msg.width, msg.height);
     if (msg.type === 'js3d_set_background') {
         setBackgroundImage(msg.url || null);
     }

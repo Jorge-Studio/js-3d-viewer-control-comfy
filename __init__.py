@@ -13,6 +13,8 @@ from .nodes.composite_on_image import NODE_CLASS_MAPPINGS as composite_nodes
 from .nodes.composite_on_image import NODE_DISPLAY_NAME_MAPPINGS as composite_names
 from .nodes.camera_rig import NODE_CLASS_MAPPINGS as camera_nodes
 from .nodes.camera_rig import NODE_DISPLAY_NAME_MAPPINGS as camera_names
+from .nodes.gaussian_to_mesh import NODE_CLASS_MAPPINGS as gs_mesh_nodes
+from .nodes.gaussian_to_mesh import NODE_DISPLAY_NAME_MAPPINGS as gs_mesh_names
 
 NODE_CLASS_MAPPINGS = {
     **load_nodes,
@@ -20,6 +22,7 @@ NODE_CLASS_MAPPINGS = {
     **export_nodes,
     **composite_nodes,
     **camera_nodes,
+    **gs_mesh_nodes,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -28,6 +31,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **export_names,
     **composite_names,
     **camera_names,
+    **gs_mesh_names,
 }
 
 WEB_DIRECTORY = "./web"

@@ -143,8 +143,22 @@ app.registerExtension({
                                                 resolve();
                                             };
                                             window.addEventListener("message", handler);
+                                            const wWidget = node.widgets?.find(
+                                                (w) => w.name === "width"
+                                            );
+                                            const hWidget = node.widgets?.find(
+                                                (w) => w.name === "height"
+                                            );
                                             node._js3dIframe.contentWindow.postMessage(
-                                                { type: "js3d_capture" },
+                                                {
+                                                    type: "js3d_capture",
+                                                    width: wWidget
+                                                        ? parseInt(wWidget.value)
+                                                        : undefined,
+                                                    height: hWidget
+                                                        ? parseInt(hWidget.value)
+                                                        : undefined,
+                                                },
                                                 "*"
                                             );
                                             setTimeout(() => {

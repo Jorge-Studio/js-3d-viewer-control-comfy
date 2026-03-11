@@ -2,3 +2,5 @@ trimesh
 numpy
 Pillow
 pygltflib
+open3d
+pymeshlab

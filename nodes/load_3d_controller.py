@@ -98,7 +98,7 @@ def _resolve_path(model_file):
 
 
 def _decode_base64_image_and_mask(b64_str, w, h):
-    """Decode a transparent PNG: returns (RGB image, alpha mask)."""
+    """Decode a transparent PNG: returns (RGB image, alpha mask) at (w, h)."""
     blank_img = torch.zeros(1, h, w, 3, dtype=torch.float32)
     blank_mask = torch.zeros(1, h, w, dtype=torch.float32)
     if not b64_str:
@@ -110,6 +110,8 @@ def _decode_base64_image_and_mask(b64_str, w, h):
         from PIL import Image
         import io
         img = Image.open(io.BytesIO(raw)).convert("RGBA")
+        if img.width != w or img.height != h:
+            img = img.resize((w, h), Image.LANCZOS)
         arr = np.array(img).astype(np.float32) / 255.0
         rgb = torch.from_numpy(arr[:, :, :3]).unsqueeze(0)
         alpha = torch.from_numpy(arr[:, :, 3]).unsqueeze(0)
@@ -128,6 +130,8 @@ def _decode_base64_image(b64_str, w, h):
         from PIL import Image
         import io
         img = Image.open(io.BytesIO(raw)).convert("RGB")
+        if img.width != w or img.height != h:
+            img = img.resize((w, h), Image.LANCZOS)
         arr = np.array(img).astype(np.float32) / 255.0
         return torch.from_numpy(arr).unsqueeze(0)
     except Exception:
