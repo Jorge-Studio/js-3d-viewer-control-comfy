@@ -13,8 +13,16 @@ from .nodes.composite_on_image import NODE_CLASS_MAPPINGS as composite_nodes
 from .nodes.composite_on_image import NODE_DISPLAY_NAME_MAPPINGS as composite_names
 from .nodes.camera_rig import NODE_CLASS_MAPPINGS as camera_nodes
 from .nodes.camera_rig import NODE_DISPLAY_NAME_MAPPINGS as camera_names
-from .nodes.gaussian_to_mesh import NODE_CLASS_MAPPINGS as gs_mesh_nodes
-from .nodes.gaussian_to_mesh import NODE_DISPLAY_NAME_MAPPINGS as gs_mesh_names
+
+gs_mesh_nodes = {}
+gs_mesh_names = {}
+try:
+    from .nodes.gaussian_to_mesh import NODE_CLASS_MAPPINGS as _gm
+    from .nodes.gaussian_to_mesh import NODE_DISPLAY_NAME_MAPPINGS as _gmn
+    gs_mesh_nodes = _gm
+    gs_mesh_names = _gmn
+except Exception as e:
+    print(f"[JS3D] Gaussian-to-Mesh node unavailable (install open3d & pymeshlab): {e}")
 
 NODE_CLASS_MAPPINGS = {
     **load_nodes,

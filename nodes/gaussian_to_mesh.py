@@ -3,8 +3,6 @@
 import os
 import folder_paths
 
-from ..utils.gaussian_mesh_utils import gaussian_to_mesh
-
 
 class JS3D_GaussianToMesh:
     """Convert a Gaussian Splatting point cloud (.ply) into a textured 3D mesh."""
@@ -81,6 +79,8 @@ class JS3D_GaussianToMesh:
                 raise FileNotFoundError(
                     f"Gaussian PLY file not found: {mesh_path}"
                 )
+
+        from ..utils.gaussian_mesh_utils import gaussian_to_mesh
 
         output_dir = os.path.join(folder_paths.get_output_directory(), "3d_meshes")
 
