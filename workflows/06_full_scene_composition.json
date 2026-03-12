@@ -1,12 +1,12 @@
 {
-  "last_node_id": 7,
-  "last_link_id": 7,
+  "last_node_id": 6,
+  "last_link_id": 6,
   "nodes": [
     {
       "id": 1,
       "type": "LoadImage",
       "pos": [50, 50],
-      "size": [315, 314],
+      "size": [300, 310],
       "flags": {},
       "order": 0,
       "mode": 0,
@@ -23,7 +23,7 @@
       "id": 2,
       "type": "JS3D_Load3DController",
       "pos": [50, 420],
-      "size": [420, 800],
+      "size": [520, 900],
       "flags": {},
       "order": 1,
       "mode": 0,
@@ -31,7 +31,7 @@
       "outputs": [
         {"name": "image", "type": "IMAGE", "links": [1], "slot_index": 0},
         {"name": "mask", "type": "MASK", "links": [2], "slot_index": 1},
-        {"name": "mesh_path", "type": "STRING", "links": [7], "slot_index": 2},
+        {"name": "mesh_path", "type": "STRING", "links": [], "slot_index": 2},
         {"name": "normal_map", "type": "IMAGE", "links": [], "slot_index": 3},
         {"name": "camera_info", "type": "STRING", "links": [], "slot_index": 4},
         {"name": "width", "type": "INT", "links": [], "slot_index": 5},
@@ -42,9 +42,9 @@
       "_meta": {"title": "Load 3D Model"}
     },
     {
-      "id": 5,
+      "id": 3,
       "type": "JS3D_CompositeOnImage",
-      "pos": [550, 50],
+      "pos": [650, 50],
       "size": [350, 300],
       "flags": {},
       "order": 2,
@@ -64,8 +64,8 @@
     {
       "id": 4,
       "type": "PanAndScanLayers",
-      "pos": [550, 410],
-      "size": [420, 700],
+      "pos": [1080, 50],
+      "size": [500, 800],
       "flags": {},
       "order": 3,
       "mode": 0,
@@ -73,27 +73,23 @@
         {"name": "middle_image", "type": "IMAGE", "link": 4}
       ],
       "outputs": [
-        {"name": "image", "type": "IMAGE", "links": [5, 6], "slot_index": 0},
+        {"name": "IMAGE", "type": "IMAGE", "links": [5, 6], "slot_index": 0},
         {"name": "width", "type": "INT", "links": [], "slot_index": 1},
         {"name": "height", "type": "INT", "links": [], "slot_index": 2}
       ],
       "properties": {"Node name for S&R": "PanAndScanLayers"},
       "widgets_values": [
-        "1080p (1920×1080)",
-        "16:9 (HD/4K)",
-        false,
-        1920,
-        1080,
-        "White",
+        "1080p (1920×1080)", "16:9 (HD/4K)", false,
+        1920, 1080, "White",
         0, 0, 1.0, 1.0, true
       ],
-      "_meta": {"title": "Scene Compositor (Pan & Scan Layers)"}
+      "_meta": {"title": "Pan & Scan Layers (Final Framing)"}
     },
     {
-      "id": 6,
+      "id": 5,
       "type": "PreviewImage",
-      "pos": [1050, 50],
-      "size": [450, 450],
+      "pos": [1660, 50],
+      "size": [400, 400],
       "flags": {},
       "order": 4,
       "mode": 0,
@@ -102,14 +98,13 @@
       ],
       "outputs": [],
       "properties": {"Node name for S&R": "PreviewImage"},
-      "widgets_values": [],
-      "_meta": {"title": "Scene Preview"}
+      "_meta": {"title": "Final Scene Preview"}
     },
     {
-      "id": 7,
+      "id": 6,
       "type": "SaveImage",
-      "pos": [1050, 570],
-      "size": [450, 450],
+      "pos": [1660, 500],
+      "size": [400, 300],
       "flags": {},
       "order": 5,
       "mode": 0,
@@ -118,41 +113,26 @@
       ],
       "outputs": [],
       "properties": {"Node name for S&R": "SaveImage"},
-      "widgets_values": ["3d_scene_composite"],
-      "_meta": {"title": "Save Composited Scene"}
-    },
-    {
-      "id": 8,
-      "type": "JS3D_ExportFormat",
-      "pos": [550, 1170],
-      "size": [350, 120],
-      "flags": {},
-      "order": 6,
-      "mode": 0,
-      "inputs": [
-        {"name": "mesh_path", "type": "STRING", "link": 7}
-      ],
-      "outputs": [
-        {"name": "exported_path", "type": "STRING", "links": [], "slot_index": 0}
-      ],
-      "properties": {"Node name for S&R": "JS3D_ExportFormat"},
-      "widgets_values": ["", "glb", "exported_model"],
-      "_meta": {"title": "Export 3D Format"}
+      "widgets_values": ["scene_final"],
+      "_meta": {"title": "Save Final Scene"}
     }
   ],
   "links": [
-    [1, 2, 0, 5, 0, "IMAGE"],
-    [2, 2, 1, 5, 1, "MASK"],
-    [3, 1, 0, 5, 2, "IMAGE"],
-    [4, 5, 0, 4, 0, "IMAGE"],
-    [5, 4, 0, 6, 0, "IMAGE"],
-    [6, 4, 0, 7, 0, "IMAGE"],
-    [7, 2, 2, 8, 0, "STRING"]
+    [1, 2, 0, 3, 0, "IMAGE"],
+    [2, 2, 1, 3, 1, "MASK"],
+    [3, 1, 0, 3, 2, "IMAGE"],
+    [4, 3, 0, 4, 0, "IMAGE"],
+    [5, 4, 0, 5, 0, "IMAGE"],
+    [6, 4, 0, 6, 0, "IMAGE"]
   ],
-  "groups": [],
+  "groups": [
+    {
+      "title": "Full Scene — 3D composite + Pan & Scan framing for final output",
+      "bounding": [30, -30, 2070, 1380],
+      "color": "#9e3f5e"
+    }
+  ],
   "config": {},
-  "extra": {
-    "ds": {"scale": 0.65, "offset": [0, 0]}
-  },
+  "extra": {"ds": {"scale": 0.5, "offset": [50, 50]}},
   "version": 0.4
 }

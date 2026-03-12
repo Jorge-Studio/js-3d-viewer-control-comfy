@@ -6,7 +6,7 @@
       "id": 1,
       "type": "JS3D_Load3DController",
       "pos": [50, 50],
-      "size": [420, 750],
+      "size": [520, 900],
       "flags": {},
       "order": 0,
       "mode": 0,
@@ -14,7 +14,7 @@
       "outputs": [
         {"name": "image", "type": "IMAGE", "links": [], "slot_index": 0},
         {"name": "mask", "type": "MASK", "links": [], "slot_index": 1},
-        {"name": "mesh_path", "type": "STRING", "links": [1, 2], "slot_index": 2},
+        {"name": "mesh_path", "type": "STRING", "links": [1], "slot_index": 2},
         {"name": "normal_map", "type": "IMAGE", "links": [], "slot_index": 3},
         {"name": "camera_info", "type": "STRING", "links": [], "slot_index": 4},
         {"name": "width", "type": "INT", "links": [], "slot_index": 5},
@@ -22,13 +22,13 @@
       ],
       "properties": {"Node name for S&R": "JS3D_Load3DController"},
       "widgets_values": ["none", 1024, 1024, ""],
-      "_meta": {"title": "Load 3D Controller"}
+      "_meta": {"title": "Load 3D Model"}
     },
     {
       "id": 2,
       "type": "JS3D_ExportFormat",
-      "pos": [550, 50],
-      "size": [350, 150],
+      "pos": [650, 50],
+      "size": [350, 180],
       "flags": {},
       "order": 1,
       "mode": 0,
@@ -36,17 +36,17 @@
         {"name": "mesh_path", "type": "STRING", "link": 1}
       ],
       "outputs": [
-        {"name": "exported_path", "type": "STRING", "links": [3], "slot_index": 0}
+        {"name": "exported_path", "type": "STRING", "links": [2], "slot_index": 0}
       ],
       "properties": {"Node name for S&R": "JS3D_ExportFormat"},
       "widgets_values": ["", "glb", "exported_model"],
-      "_meta": {"title": "Export to GLB"}
+      "_meta": {"title": "Export / Convert Format"}
     },
     {
       "id": 3,
       "type": "JS3D_Preview3D",
-      "pos": [550, 280],
-      "size": [420, 620],
+      "pos": [1080, 50],
+      "size": [520, 700],
       "flags": {},
       "order": 2,
       "mode": 0,
@@ -56,36 +56,22 @@
       ],
       "outputs": [],
       "properties": {"Node name for S&R": "JS3D_Preview3D"},
-      "widgets_values": ["", "{}"],
-      "_meta": {"title": "Preview Original"}
-    },
-    {
-      "id": 4,
-      "type": "JS3D_Preview3D",
-      "pos": [1020, 280],
-      "size": [420, 620],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [
-        {"name": "mesh_path", "type": "STRING", "link": 3},
-        {"name": "camera_info", "type": "STRING", "link": null}
-      ],
-      "outputs": [],
-      "properties": {"Node name for S&R": "JS3D_Preview3D"},
-      "widgets_values": ["", "{}"],
-      "_meta": {"title": "Preview Exported (GLB)"}
+      "widgets_values": [""],
+      "_meta": {"title": "Preview Exported Model"}
     }
   ],
   "links": [
     [1, 1, 2, 2, 0, "STRING"],
-    [2, 1, 2, 3, 0, "STRING"],
-    [3, 2, 0, 4, 0, "STRING"]
+    [2, 2, 0, 3, 0, "STRING"]
   ],
-  "groups": [],
+  "groups": [
+    {
+      "title": "Export & Convert — Change format (GLB, OBJ, STL, PLY) with download",
+      "bounding": [30, -30, 1610, 810],
+      "color": "#9e6b3f"
+    }
+  ],
   "config": {},
-  "extra": {
-    "ds": {"scale": 0.6, "offset": [0, 0]}
-  },
+  "extra": {"ds": {"scale": 0.75, "offset": [50, 50]}},
   "version": 0.4
 }

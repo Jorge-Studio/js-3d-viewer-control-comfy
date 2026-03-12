@@ -86,37 +86,26 @@ Front (F), Top, and Side view buttons for quick camera positioning.
 ### Output Resolution
 The `width` and `height` inputs on the Load 3D Controller node control the actual output image resolution. The snapshot is rendered at the specified dimensions regardless of the viewer widget size on the canvas.
 
-## Workflow: 3D on Background Image
+## Composite Fit Modes
 
-The recommended workflow (`test_3d_layers_scene.json`):
-
-```
-LoadImage (background) ──┐
-                         ├── Composite 3D on Image ── Pan & Scan Layers ── Preview / Save
-Load 3D Controller ──────┘
-  (image + mask)
-```
-
-### Fit Modes
-
-The Composite node has a `fit_mode` dropdown:
+The `Composite 3D on Image` node has a `fit_mode` dropdown:
 - **fit** (default): Scale the 3D render to fit inside the background, centered
 - **fill**: Scale to cover the entire background
 - **stretch**: Stretch to exactly match background dimensions
 - **none**: Use original render size, placed at top-left corner
 
-## All Workflows
+## Workflows
 
-| Workflow | Description |
-|----------|-------------|
-| `test_gaussian_to_mesh.json` | Convert Gaussian Splat PLY to textured mesh, preview, and export |
-| `test_3d_layers_scene.json` | Full scene: 3D model composited on background, framed with Pan & Scan Layers |
-| `test_3d_on_image.json` | Simple: 3D model composited directly onto a background image |
-| `test_load_preview.json` | Basic: Load and preview a 3D model |
-| `test_export_and_preview.json` | Export a 3D model to another format with download |
-| `test_camera_rig_render.json` | Control the viewer camera via Camera Rig node |
-| `test_snapshot_outputs.json` | Inspect all outputs: image, mask, normal map |
-| `test_multi_model_composite.json` | Multiple 3D models composited together |
+All workflows are in the `workflows/` folder. Drag any onto the ComfyUI canvas.
+
+| # | Workflow | What it tests |
+|---|----------|---------------|
+| 01 | `01_view_and_render.json` | Load any 3D file, position it interactively, render a clean transparent PNG. Tests viewer controls, gizmo, axis options, focal length, image ratio, view presets. |
+| 02 | `02_composite_on_background.json` | Load a background image + 3D model, composite the model onto the background with fit/scale/offset controls. Tests live background preview in viewer. |
+| 03 | `03_gaussian_to_mesh.json` | Convert a Gaussian Splatting PLY to a textured mesh via Poisson reconstruction, preview the result, and export/download it. Tests the full conversion pipeline. |
+| 04 | `04_export_and_convert.json` | Load any 3D file, convert it to another format (GLB, OBJ, STL, PLY), preview the result, and download it. |
+| 05 | `05_camera_rig.json` | Define exact camera position/FOV/target via Camera Rig node and apply to a Preview 3D viewer. Save the rendered output from a controlled angle. |
+| 06 | `06_full_scene_composition.json` | Full pipeline: 3D model composited on background, then framed and positioned with Pan & Scan Layers for final output. |
 
 ## Requirements
 

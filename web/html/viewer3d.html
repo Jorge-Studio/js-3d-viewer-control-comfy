@@ -20,6 +20,7 @@ canvas { display: block; width: 100%; height: 100%; }
 .menu-btn { width: 36px; height: 36px; border: 1px solid #444; border-radius: 6px; background: rgba(30,30,30,0.85); color: #ccc; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); transition: background 0.15s, border-color 0.15s; }
 .menu-btn:hover { background: rgba(60,60,60,0.9); border-color: #666; }
 .menu-btn.active { background: rgba(80,120,200,0.5); border-color: #6a9eff; color: #fff; }
+.menu-btn.disabled { opacity: 0.3; pointer-events: none; }
 
 .panel { position: absolute; top: 10px; background: rgba(20,20,20,0.92); border: 1px solid #444; border-radius: 8px; padding: 12px; min-width: 220px; max-width: 280px; backdrop-filter: blur(8px); z-index: 99; display: none; font-size: 12px; max-height: calc(100% - 60px); overflow-y: auto; }
 .panel.left-panel { left: 56px; }
@@ -35,12 +36,23 @@ canvas { display: block; width: 100%; height: 100%; }
 .panel-row select { background: #2a2a2a; color: #ccc; border: 1px solid #555; border-radius: 4px; padding: 2px 4px; font-size: 11px; }
 .panel-row .val { font-size: 10px; color: #666; min-width: 30px; text-align: right; }
 
-#gizmo-bar { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; z-index: 100; background: rgba(15,15,15,0.8); padding: 4px 6px; border-radius: 8px; border: 1px solid #333; backdrop-filter: blur(6px); }
+#gizmo-bar { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; align-items: center; z-index: 100; background: rgba(15,15,15,0.8); padding: 4px 8px; border-radius: 8px; border: 1px solid #333; backdrop-filter: blur(6px); }
 #gizmo-bar .menu-btn { font-size: 13px; font-weight: 600; width: 32px; height: 32px; }
+#gizmo-bar .tb-sep { width: 1px; height: 24px; background: #444; margin: 0 4px; flex-shrink: 0; }
+#gizmo-bar .tb-label { font-size: 10px; color: #777; margin-right: 4px; white-space: nowrap; user-select: none; }
+#gizmo-bar .tb-slider { width: 80px; accent-color: #6a9eff; height: 4px; }
+#gizmo-bar .tb-val { font-size: 10px; color: #888; min-width: 28px; text-align: right; user-select: none; }
+#selection-badge { position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #f90; background: rgba(15,15,15,0.7); padding: 3px 10px; border-radius: 4px; border: 1px solid rgba(255,153,0,0.3); z-index: 100; display: none; pointer-events: none; backdrop-filter: blur(4px); }
+
+#display-bar { position: absolute; top: 10px; right: 56px; display: flex; gap: 3px; z-index: 100; background: rgba(15,15,15,0.8); padding: 3px 5px; border-radius: 6px; border: 1px solid #333; backdrop-filter: blur(6px); }
+#display-bar .d-btn { width: 28px; height: 28px; border: 1px solid #444; border-radius: 4px; background: rgba(30,30,30,0.85); color: #999; font-size: 9px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s, border-color 0.15s; }
+#display-bar .d-btn:hover { background: rgba(60,60,60,0.9); border-color: #666; color: #ccc; }
+#display-bar .d-btn.active { background: rgba(80,120,200,0.5); border-color: #6a9eff; color: #fff; }
 
 #info-bar { position: absolute; bottom: 14px; right: 10px; font-size: 10px; color: #555; z-index: 50; text-align: right; line-height: 1.4; }
-
 #controls-hint { position: absolute; bottom: 14px; left: 10px; font-size: 9px; color: #444; z-index: 50; line-height: 1.3; }
+
+.vert-selected-marker { position: absolute; pointer-events: none; width: 8px; height: 8px; background: #ffcc00; border: 1px solid #000; border-radius: 50%; transform: translate(-50%, -50%); z-index: 90; }
 </style>
 </head>
 <body>
@@ -65,6 +77,16 @@ canvas { display: block; width: 100%; height: 100%; }
         <button class="menu-btn" id="btn-view-side" title="Side view">&#8594;</button>
     </div>
 
+    <!-- Display mode toolbar -->
+    <div id="display-bar">
+        <button class="d-btn active" id="dm-solid" title="Solid (original materials)">SOL</button>
+        <button class="d-btn" id="dm-wire" title="Wireframe">WIR</button>
+        <button class="d-btn" id="dm-verts" title="Vertices only">VRT</button>
+        <button class="d-btn" id="dm-solidwire" title="Solid + Wireframe overlay">S+W</button>
+        <button class="d-btn" id="dm-normal" title="Normal map colors">NRM</button>
+        <button class="d-btn" id="dm-flat" title="Flat shading (no texture)">FLT</button>
+    </div>
+
     <!-- Scene Panel -->
     <div class="panel left-panel" id="panel-scene">
         <h3>Scene</h3>
@@ -80,14 +102,13 @@ canvas { display: block; width: 100%; height: 100%; }
     <!-- Model Panel -->
     <div class="panel left-panel" id="panel-model">
         <h3>Model</h3>
-        <div class="panel-row"><label>Material</label>
-            <select id="opt-material"><option value="original">Original</option><option value="wireframe">Wireframe</option><option value="normal">Normal Map</option><option value="points">Point Cloud</option><option value="flat">Flat Shading</option></select>
-        </div>
         <div class="panel-row"><label>Up Axis</label>
             <select id="opt-up-axis"><option value="+Y" selected>+Y Up</option><option value="-Y">-Y Up</option><option value="+Z">+Z Up</option><option value="-Z">-Z Up</option><option value="+X">+X Up</option><option value="-X">-X Up</option></select>
         </div>
         <div class="panel-row"><label>Opacity</label><input type="range" id="opt-opacity" min="0" max="1" step="0.01" value="1"><span class="val" id="val-opacity">1.0</span></div>
         <div class="panel-row"><label>Point Size</label><input type="range" id="opt-point-size" min="0.0005" max="0.05" step="0.0005" value="0.003"><span class="val" id="val-point-size">0.003</span></div>
+        <div class="panel-row"><label>Polycount</label><input type="range" id="opt-polycount" min="1" max="100" step="1" value="100"><span class="val" id="val-polycount">100%</span></div>
+        <div class="panel-row" id="polycount-info" style="font-size:10px;color:#666;justify-content:center;">—</div>
     </div>
 
     <!-- Camera Panel -->
@@ -118,13 +139,19 @@ canvas { display: block; width: 100%; height: 100%; }
     </div>
 
     <div id="gizmo-bar">
-        <button class="menu-btn active" id="gz-translate" title="Translate (T)">T</button>
+        <button class="menu-btn" id="gz-translate" title="Translate (T)">T</button>
         <button class="menu-btn" id="gz-rotate" title="Rotate (R)">R</button>
         <button class="menu-btn" id="gz-scale" title="Scale (S)">S</button>
         <button class="menu-btn" id="gz-none" title="Orbit only (Q)">Q</button>
+        <button class="menu-btn" id="gz-vertex" title="Vertex edit (V)">V</button>
+        <div class="tb-sep"></div>
+        <span class="tb-label">Poly</span>
+        <input class="tb-slider" type="range" id="tb-polycount" min="1" max="100" step="1" value="100" title="Polygon count">
+        <span class="tb-val" id="tb-polyval">100%</span>
     </div>
 
-    <div id="controls-hint">LMB: Orbit · RMB: Pan · Scroll: Zoom</div>
+    <div id="selection-badge">Click object to select</div>
+    <div id="controls-hint">LMB: Click to select · RMB: Pan · Scroll: Zoom</div>
     <div id="info-bar">JS3D Viewer</div>
 </div>
 
@@ -146,7 +173,6 @@ import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
 const SH_C0 = 0.28209479177387814;
 const OPACITY_THRESHOLD = 0.02;
 
@@ -238,6 +264,32 @@ let loadingAbort = null;
 let hasBackgroundImage = false;
 let savedBgColor = '#1a1a1a';
 let _currentFilename = '';
+let currentDisplayMode = 'solid';
+
+// Selection state (Blender-like)
+let isObjectSelected = false;
+let selectionBox = null;
+let _lastGizmoMode = 'translate';
+let _clickStartPos = null;
+let _clickStartTime = 0;
+
+// Vertex edit state
+let vertexEditActive = false;
+let vertexOverlay = null;
+let vertexSelectionSet = new Set();
+let vertexHelperObject = null;
+let vertexTransformHelper = null;
+let _vertexDragStartPos = null;
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+raycaster.params.Points = { threshold: 0.05 };
+
+// Polycount state
+let _originalGeometries = new Map();
+let _currentPolyPercent = 100;
+
+// Wireframe overlay state
+let _wireframeOverlays = [];
 
 function setBackgroundImage(url) {
     if (url) {
@@ -281,7 +333,7 @@ function setProgress(pct) {
 // ─── Custom binary PLY parser for Gaussian Splatting ─────────────────────────
 function parsePLYHeader(buffer) {
     const bytes = new Uint8Array(buffer);
-    const marker = [101,110,100,95,104,101,97,100,101,114,10]; // "end_header\n"
+    const marker = [101,110,100,95,104,101,97,100,101,114,10];
     let headerEnd = -1;
     const limit = Math.min(bytes.length, 65536);
     for (let i = 0; i < limit; i++) {
@@ -331,19 +383,15 @@ function parsePLYHeader(buffer) {
 async function fetchWithProgress(url, onProgress) {
     const response = await fetch(url, { mode: 'cors' });
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-
     const contentLength = parseInt(response.headers.get('Content-Length') || '0');
-
     if (!response.body || contentLength === 0) {
         const buffer = await response.arrayBuffer();
         onProgress(100);
         return buffer;
     }
-
     const reader = response.body.getReader();
     const chunks = [];
     let received = 0;
-
     while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -351,82 +399,58 @@ async function fetchWithProgress(url, onProgress) {
         received += value.length;
         if (contentLength > 0) onProgress(Math.round((received / contentLength) * 100));
     }
-
     const result = new Uint8Array(received);
     let offset = 0;
-    for (const chunk of chunks) {
-        result.set(chunk, offset);
-        offset += chunk.length;
-    }
+    for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.length; }
     return result.buffer;
 }
 
 async function loadGaussianSplatPLY(url) {
     showLoading('Downloading PLY file...');
     setProgress(0);
-
     const buffer = await fetchWithProgress(url, (pct) => {
         setProgress(pct * 0.7);
         showLoading(`Downloading... ${pct}%`);
     });
-
     showLoading('Parsing PLY header...');
     setProgress(72);
-
     const header = parsePLYHeader(buffer);
     if (!header) throw new Error('Invalid PLY file');
     if (!header.isGaussianSplat) return null;
     if (header.format === 'ascii') return null;
 
     const { vertexCount, propMap, stride, dataOffset, littleEndian } = header;
-
     showLoading(`Parsing ${vertexCount.toLocaleString()} splat points...`);
     setProgress(75);
-
     const dataView = new DataView(buffer, dataOffset);
 
-    const xOff = propMap['x']?.offset;
-    const yOff = propMap['y']?.offset;
-    const zOff = propMap['z']?.offset;
-    const dc0Off = propMap['f_dc_0']?.offset;
-    const dc1Off = propMap['f_dc_1']?.offset;
-    const dc2Off = propMap['f_dc_2']?.offset;
+    const xOff = propMap['x']?.offset, yOff = propMap['y']?.offset, zOff = propMap['z']?.offset;
+    const dc0Off = propMap['f_dc_0']?.offset, dc1Off = propMap['f_dc_1']?.offset, dc2Off = propMap['f_dc_2']?.offset;
     const opOff = propMap['opacity']?.offset;
+    if (xOff === undefined || yOff === undefined || zOff === undefined) throw new Error('PLY missing position properties');
 
-    if (xOff === undefined || yOff === undefined || zOff === undefined) {
-        throw new Error('PLY missing position properties');
-    }
-
-    const xType = propMap['x'].type;
-    const yType = propMap['y'].type;
-    const zType = propMap['z'].type;
+    const xType = propMap['x'].type, yType = propMap['y'].type, zType = propMap['z'].type;
     const dcType = propMap['f_dc_0']?.type || 'float';
     const opType = propMap['opacity']?.type || 'float';
 
     const positions = new Float32Array(vertexCount * 3);
     const colors = new Float32Array(vertexCount * 3);
     let validCount = 0;
-
     const batchSize = 100000;
 
     for (let i = 0; i < vertexCount; i++) {
         const base = i * stride;
-
         if (opOff !== undefined) {
             const rawOp = plyReadValue(dataView, base + opOff, opType, littleEndian);
             if (sigmoid(rawOp) < OPACITY_THRESHOLD) continue;
         }
-
         const px = plyReadValue(dataView, base + xOff, xType, littleEndian);
         const py = plyReadValue(dataView, base + yOff, yType, littleEndian);
         const pz = plyReadValue(dataView, base + zOff, zType, littleEndian);
-
         if (!isFinite(px) || !isFinite(py) || !isFinite(pz)) continue;
-
-        positions[validCount * 3]     = px;
+        positions[validCount * 3] = px;
         positions[validCount * 3 + 1] = py;
         positions[validCount * 3 + 2] = pz;
-
         if (dc0Off !== undefined) {
             const r = plyReadValue(dataView, base + dc0Off, dcType, littleEndian);
             const g = plyReadValue(dataView, base + dc1Off, dcType, littleEndian);
@@ -437,9 +461,7 @@ async function loadGaussianSplatPLY(url) {
         } else {
             colors[validCount * 3] = colors[validCount * 3 + 1] = colors[validCount * 3 + 2] = 0.7;
         }
-
         validCount++;
-
         if (i > 0 && i % batchSize === 0) {
             setProgress(75 + Math.round((i / vertexCount) * 20));
             await new Promise(r => setTimeout(r, 0));
@@ -448,33 +470,29 @@ async function loadGaussianSplatPLY(url) {
 
     showLoading(`Building geometry (${validCount.toLocaleString()} points)...`);
     setProgress(96);
-
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions.slice(0, validCount * 3), 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors.slice(0, validCount * 3), 3));
     geometry.computeBoundingSphere();
-
     const autoSize = Math.min(0.03, Math.max(0.001, 2.0 / Math.sqrt(validCount)));
-
-    const material = new THREE.PointsMaterial({
-        size: autoSize,
-        vertexColors: true,
-        sizeAttenuation: true,
-    });
-
+    const material = new THREE.PointsMaterial({ size: autoSize, vertexColors: true, sizeAttenuation: true });
     const points = new THREE.Points(geometry, material);
     points.raycast = () => {};
-
     const sizeSlider = document.getElementById('opt-point-size');
     sizeSlider.value = autoSize;
     document.getElementById('val-point-size').textContent = autoSize.toFixed(4);
-
     setProgress(100);
     return { object: points, vertexCount: validCount, isGS: true };
 }
 
 // ─── Model management ────────────────────────────────────────────────────────
 function clearModel() {
+    exitVertexEditMode();
+    clearWireframeOverlays();
+    // Clear selection
+    isObjectSelected = false;
+    if (selectionBox) { scene.remove(selectionBox); selectionBox.dispose(); selectionBox = null; }
+
     if (currentModel) {
         try { transformControls.detach(); } catch (_) {}
         scene.remove(currentModel);
@@ -487,9 +505,17 @@ function clearModel() {
         });
         currentModel = null;
         originalMaterials.clear();
+        _originalGeometries.clear();
         isGaussianSplat = false;
         isLargePointCloud = false;
     }
+    _currentPolyPercent = 100;
+    document.getElementById('opt-polycount').value = 100;
+    document.getElementById('val-polycount').textContent = '100%';
+    document.getElementById('tb-polycount').value = 100;
+    document.getElementById('tb-polyval').textContent = '100%';
+    document.getElementById('polycount-info').textContent = '—';
+    updateHints();
 }
 
 function centerAndScale(object) {
@@ -507,9 +533,13 @@ function centerAndScale(object) {
 
 function storeOriginalMaterials(object) {
     originalMaterials.clear();
+    _originalGeometries.clear();
     object.traverse((child) => {
         if (child.isMesh && child.material) {
             originalMaterials.set(child.uuid, child.material.clone ? child.material.clone() : child.material);
+            if (child.geometry) {
+                _originalGeometries.set(child.uuid, child.geometry.clone());
+            }
         }
         if (child.isPoints && child.material) {
             originalMaterials.set(child.uuid, child.material.clone ? child.material.clone() : child.material);
@@ -519,7 +549,6 @@ function storeOriginalMaterials(object) {
 
 function addModelToScene(object, opts = {}) {
     clearModel();
-
     isGaussianSplat = !!opts.isGS;
     isLargePointCloud = !!opts.isLargePointCloud;
 
@@ -528,65 +557,163 @@ function addModelToScene(object, opts = {}) {
     centerAndScale(wrapper);
 
     if (isGaussianSplat || isLargePointCloud) {
-        object.traverse(child => {
-            if (child.isPoints) child.raycast = () => {};
-        });
+        object.traverse(child => { if (child.isPoints) child.raycast = () => {}; });
     }
 
     storeOriginalMaterials(wrapper);
     scene.add(wrapper);
     currentModel = wrapper;
 
+    const vBtn = document.getElementById('gz-vertex');
     if (isGaussianSplat || isLargePointCloud) {
-        setGizmoMode('none');
+        vBtn.classList.add('disabled');
     } else {
-        setGizmoMode('translate');
+        vBtn.classList.remove('disabled');
     }
 
     orbitControls.target.set(0, 0, 0);
     camera.position.set(2, 1.5, 3);
     orbitControls.update();
     updateInfoBar(opts.vertexCount);
+    setDisplayMode('solid');
     showLoading(null);
+
+    // Auto-select mesh objects so the gizmo appears immediately (Blender-like)
+    if (!isGaussianSplat && !isLargePointCloud) {
+        selectObject();
+    } else {
+        deselectObject();
+        document.getElementById('selection-badge').style.display = 'block';
+        document.getElementById('selection-badge').textContent = 'Point cloud — convert to mesh for gizmo';
+        setTimeout(() => { document.getElementById('selection-badge').style.display = 'none'; }, 4000);
+    }
 
     setTimeout(() => { if (!contextLost && currentModel) captureSnapshot(); }, 500);
 }
 
-function updateInfoBar(vertexOverride) {
-    let info = 'JS3D Viewer';
+// ─── Selection (Blender-like click-to-select) ────────────────────────────────
+function selectObject() {
+    if (!currentModel) return;
+    isObjectSelected = true;
+
+    // Show orange bounding box
+    if (selectionBox) { scene.remove(selectionBox); selectionBox.dispose(); }
+    selectionBox = new THREE.BoxHelper(currentModel, 0xff8800);
+    scene.add(selectionBox);
+
+    // Attach gizmo
+    setGizmoMode(_lastGizmoMode || 'translate');
+
+    document.getElementById('selection-badge').style.display = 'block';
+    document.getElementById('selection-badge').textContent = 'Selected — T/R/S to transform';
+    setTimeout(() => { document.getElementById('selection-badge').style.display = 'none'; }, 2500);
+
+    updateHints();
+}
+
+function deselectObject() {
+    isObjectSelected = false;
+
+    // Remove bounding box
+    if (selectionBox) { scene.remove(selectionBox); selectionBox.dispose(); selectionBox = null; }
+
+    // Detach gizmo
+    if (vertexEditActive) exitVertexEditMode();
+    transformControls.detach();
+    currentGizmoMode = 'none';
+    ['gz-translate', 'gz-rotate', 'gz-scale', 'gz-none', 'gz-vertex'].forEach(id => document.getElementById(id).classList.remove('active'));
+    document.getElementById('gz-none').classList.add('active');
+
+    updateHints();
+}
+
+function updateHints() {
+    const hint = document.getElementById('controls-hint');
+    if (isObjectSelected) {
+        if (vertexEditActive) {
+            hint.textContent = 'Click vertex to select · Shift+Click: multi · T/R/S: transform · Q: deselect';
+        } else {
+            hint.textContent = 'Drag gizmo to transform · T/R/S: switch mode · Q/Click empty: deselect';
+        }
+    } else {
+        hint.textContent = 'LMB: Click object to select · LMB drag: Orbit · RMB: Pan · Scroll: Zoom';
+    }
+}
+
+function handleViewportClick(e) {
+    if (vertexEditActive) return; // vertex mode has its own click handler
+    if (!currentModel) return;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+
+    // Collect all raycast-able children
+    const targets = [];
+    currentModel.traverse(child => {
+        if (child.isMesh) targets.push(child);
+    });
+
+    const hits = raycaster.intersectObjects(targets, false);
+
+    if (hits.length > 0) {
+        if (!isObjectSelected) {
+            selectObject();
+        }
+    } else {
+        if (isObjectSelected && !transformControls.dragging) {
+            deselectObject();
+        }
+    }
+}
+
+function getModelCounts() {
+    let verts = 0, faces = 0;
     if (currentModel) {
-        let verts = 0, faces = 0;
         currentModel.traverse((child) => {
-            if (child.geometry) {
+            if (child.geometry && child !== vertexOverlay) {
                 const pos = child.geometry.getAttribute('position');
                 if (pos) verts += pos.count;
                 if (child.geometry.index) faces += child.geometry.index.count / 3;
+                else if (child.isMesh && pos) faces += pos.count / 3;
             }
         });
-        if (vertexOverride) verts = vertexOverride;
-        const parts = [];
-        if (_currentFilename) parts.push(_currentFilename.split('/').pop());
-        parts.push(`Verts: ${verts.toLocaleString()}`);
-        if (faces > 0) parts.push(`Faces: ${faces.toLocaleString()}`);
-        if (isGaussianSplat) parts.push('Gaussian Splat');
-        info = parts.join(' | ');
     }
-    document.getElementById('info-bar').textContent = info;
+    return { verts, faces };
+}
+
+function updateInfoBar(vertexOverride) {
+    const parts = [];
+    if (_currentFilename) parts.push(_currentFilename.split('/').pop());
+
+    if (currentModel) {
+        const { verts, faces } = getModelCounts();
+        const v = vertexOverride || verts;
+        parts.push(`V: ${v.toLocaleString()}`);
+        if (faces > 0) parts.push(`F: ${Math.round(faces).toLocaleString()}`);
+        if (isGaussianSplat) parts.push('GS');
+
+        const modeLabels = { solid: 'Solid', wire: 'Wire', verts: 'Verts', solidwire: 'S+W', normal: 'Normals', flat: 'Flat' };
+        parts.push(modeLabels[currentDisplayMode] || currentDisplayMode);
+
+        if (vertexEditActive && vertexSelectionSet.size > 0) {
+            parts.push(`Sel: ${vertexSelectionSet.size}`);
+        }
+    }
+
+    document.getElementById('info-bar').textContent = parts.length > 0 ? parts.join(' | ') : 'JS3D Viewer';
 }
 
 // ─── Model loading ───────────────────────────────────────────────────────────
 async function loadModel(url, format) {
     showLoading('Loading...');
     setProgress(5);
-
     if (loadingAbort) { loadingAbort.abort(); loadingAbort = null; }
-
     try {
-        if (format === 'ply') {
-            await loadPLYModel(url);
-        } else {
-            await loadStandardModel(url, format);
-        }
+        if (format === 'ply') { await loadPLYModel(url); }
+        else { await loadStandardModel(url, format); }
     } catch (err) {
         console.error('[JS3D] Load error:', err);
         showLoading('Error: ' + (err.message || 'Failed to load model'));
@@ -603,7 +730,6 @@ async function loadPLYModel(url) {
     } catch (err) {
         console.warn('[JS3D] GS PLY parse failed, trying standard PLYLoader:', err.message);
     }
-
     showLoading('Loading PLY with standard loader...');
     setProgress(10);
     return new Promise((resolve, reject) => {
@@ -643,7 +769,6 @@ function loadStandardModel(url, format) {
             if (xhr.total > 0) setProgress(Math.min(90, Math.round((xhr.loaded / xhr.total) * 80) + 10));
         };
         const onError = (err) => { reject(err instanceof Error ? err : new Error(String(err))); };
-
         switch (format) {
             case 'glb': case 'gltf':
                 gltfLoader.load(url, (gltf) => { setProgress(95); addModelToScene(gltf.scene); resolve(); }, onProgress, onError);
@@ -667,6 +792,404 @@ function loadStandardModel(url, format) {
     });
 }
 
+// ─── Display Modes ───────────────────────────────────────────────────────────
+function clearWireframeOverlays() {
+    for (const ov of _wireframeOverlays) {
+        if (ov.parent) ov.parent.remove(ov);
+        if (ov.geometry) ov.geometry.dispose();
+        if (ov.material) ov.material.dispose();
+    }
+    _wireframeOverlays = [];
+}
+
+function setDisplayMode(mode) {
+    if (!currentModel) return;
+    currentDisplayMode = mode;
+    clearWireframeOverlays();
+
+    document.querySelectorAll('#display-bar .d-btn').forEach(b => b.classList.remove('active'));
+    const btnId = { solid: 'dm-solid', wire: 'dm-wire', verts: 'dm-verts', solidwire: 'dm-solidwire', normal: 'dm-normal', flat: 'dm-flat' }[mode];
+    if (btnId) document.getElementById(btnId).classList.add('active');
+
+    currentModel.traverse((child) => {
+        if (!child.isMesh && !child.isPoints) return;
+        const orig = originalMaterials.get(child.uuid);
+
+        // Reset visibility
+        child.visible = true;
+
+        switch (mode) {
+            case 'solid':
+                if (orig) child.material = orig.clone();
+                break;
+            case 'wire':
+                if (child.isMesh) child.material = new THREE.MeshBasicMaterial({ color: 0x00ff88, wireframe: true });
+                break;
+            case 'verts': {
+                if (child.isMesh) {
+                    child.visible = false;
+                    const posAttr = child.geometry.getAttribute('position');
+                    if (posAttr) {
+                        const ptGeo = new THREE.BufferGeometry();
+                        ptGeo.setAttribute('position', posAttr.clone());
+                        const ptMat = new THREE.PointsMaterial({ color: 0x88ccff, size: 3, sizeAttenuation: false });
+                        const pts = new THREE.Points(ptGeo, ptMat);
+                        pts.matrixAutoUpdate = false;
+                        pts.matrix.copy(child.matrixWorld);
+                        child.parent.add(pts);
+                        _wireframeOverlays.push(pts);
+                    }
+                }
+                break;
+            }
+            case 'solidwire':
+                if (orig) child.material = orig.clone();
+                if (child.isMesh) {
+                    const wireGeo = child.geometry;
+                    const wireMat = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true, transparent: true, opacity: 0.15 });
+                    const wireMesh = new THREE.Mesh(wireGeo, wireMat);
+                    child.add(wireMesh);
+                    _wireframeOverlays.push(wireMesh);
+                }
+                break;
+            case 'normal':
+                if (child.isMesh) child.material = new THREE.MeshNormalMaterial();
+                break;
+            case 'flat':
+                if (child.isMesh) child.material = new THREE.MeshStandardMaterial({ color: 0x888888, flatShading: true, metalness: 0.2, roughness: 0.8 });
+                break;
+        }
+    });
+    updateInfoBar();
+}
+
+document.getElementById('dm-solid').addEventListener('click', () => setDisplayMode('solid'));
+document.getElementById('dm-wire').addEventListener('click', () => setDisplayMode('wire'));
+document.getElementById('dm-verts').addEventListener('click', () => setDisplayMode('verts'));
+document.getElementById('dm-solidwire').addEventListener('click', () => setDisplayMode('solidwire'));
+document.getElementById('dm-normal').addEventListener('click', () => setDisplayMode('normal'));
+document.getElementById('dm-flat').addEventListener('click', () => setDisplayMode('flat'));
+
+// ─── Vertex Edit Mode ────────────────────────────────────────────────────────
+function enterVertexEditMode() {
+    if (!currentModel || isGaussianSplat || isLargePointCloud) return;
+    vertexEditActive = true;
+    document.getElementById('controls-hint').textContent = 'Click: select vertex · Shift+Click: multi-select · Drag gizmo: move vertex';
+
+    // Build combined vertex overlay from all meshes
+    const allPositions = [];
+    const meshRefs = [];
+    currentModel.traverse((child) => {
+        if (!child.isMesh || !child.geometry) return;
+        const posAttr = child.geometry.getAttribute('position');
+        if (!posAttr) return;
+        const worldMatrix = child.matrixWorld;
+        for (let i = 0; i < posAttr.count; i++) {
+            const v = new THREE.Vector3(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+            v.applyMatrix4(worldMatrix);
+            allPositions.push(v.x, v.y, v.z);
+            meshRefs.push({ mesh: child, localIndex: i });
+        }
+    });
+
+    if (allPositions.length === 0) return;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(allPositions, 3));
+
+    const colors = new Float32Array(allPositions.length);
+    colors.fill(1.0);
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+    const mat = new THREE.PointsMaterial({ size: 4, sizeAttenuation: false, vertexColors: true, depthTest: true, transparent: true, opacity: 0.9 });
+    vertexOverlay = new THREE.Points(geo, mat);
+    vertexOverlay._meshRefs = meshRefs;
+    scene.add(vertexOverlay);
+
+    // Adjust raycaster threshold based on model scale
+    const box = new THREE.Box3().setFromObject(currentModel);
+    const extent = box.getSize(new THREE.Vector3()).length();
+    raycaster.params.Points.threshold = extent * 0.02;
+
+    // Transform helper for moving vertices
+    vertexHelperObject = new THREE.Object3D();
+    scene.add(vertexHelperObject);
+
+    transformControls.detach();
+
+    vertexSelectionSet.clear();
+    updateVertexColors();
+    updateInfoBar();
+}
+
+function exitVertexEditMode() {
+    vertexEditActive = false;
+    if (vertexOverlay) {
+        scene.remove(vertexOverlay);
+        if (vertexOverlay.geometry) vertexOverlay.geometry.dispose();
+        if (vertexOverlay.material) vertexOverlay.material.dispose();
+        vertexOverlay = null;
+    }
+    if (vertexHelperObject) {
+        transformControls.detach();
+        scene.remove(vertexHelperObject);
+        vertexHelperObject = null;
+    }
+    vertexSelectionSet.clear();
+    document.getElementById('controls-hint').textContent = 'LMB: Orbit · RMB: Pan · Scroll: Zoom';
+}
+
+function updateVertexColors() {
+    if (!vertexOverlay) return;
+    const colorAttr = vertexOverlay.geometry.getAttribute('color');
+    for (let i = 0; i < colorAttr.count; i++) {
+        if (vertexSelectionSet.has(i)) {
+            colorAttr.setXYZ(i, 1.0, 0.85, 0.0); // yellow selected
+        } else {
+            colorAttr.setXYZ(i, 0.5, 0.7, 1.0); // light blue default
+        }
+    }
+    colorAttr.needsUpdate = true;
+}
+
+function selectVertexAt(screenX, screenY, addToSelection) {
+    if (!vertexOverlay) return;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((screenX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((screenY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObject(vertexOverlay);
+
+    if (intersects.length > 0) {
+        const idx = intersects[0].index;
+        if (!addToSelection) vertexSelectionSet.clear();
+
+        if (vertexSelectionSet.has(idx)) {
+            vertexSelectionSet.delete(idx);
+        } else {
+            vertexSelectionSet.add(idx);
+        }
+
+        updateVertexColors();
+        attachTransformToSelection();
+    } else if (!addToSelection) {
+        vertexSelectionSet.clear();
+        updateVertexColors();
+        transformControls.detach();
+    }
+    updateInfoBar();
+}
+
+function attachTransformToSelection() {
+    if (vertexSelectionSet.size === 0 || !vertexHelperObject) {
+        transformControls.detach();
+        return;
+    }
+
+    const posAttr = vertexOverlay.geometry.getAttribute('position');
+    const center = new THREE.Vector3();
+    for (const idx of vertexSelectionSet) {
+        center.x += posAttr.getX(idx);
+        center.y += posAttr.getY(idx);
+        center.z += posAttr.getZ(idx);
+    }
+    center.divideScalar(vertexSelectionSet.size);
+
+    vertexHelperObject.position.copy(center);
+    _vertexDragStartPos = center.clone();
+    transformControls.attach(vertexHelperObject);
+    transformControls.setMode('translate');
+}
+
+function onVertexTransformChange() {
+    if (!vertexEditActive || !vertexHelperObject || !_vertexDragStartPos || vertexSelectionSet.size === 0) return;
+
+    const delta = new THREE.Vector3().subVectors(vertexHelperObject.position, _vertexDragStartPos);
+    if (delta.lengthSq() < 1e-10) return;
+
+    const posAttr = vertexOverlay.geometry.getAttribute('position');
+
+    for (const idx of vertexSelectionSet) {
+        const ref = vertexOverlay._meshRefs[idx];
+        if (!ref) continue;
+
+        // Update overlay position
+        posAttr.setX(idx, posAttr.getX(idx) + delta.x);
+        posAttr.setY(idx, posAttr.getY(idx) + delta.y);
+        posAttr.setZ(idx, posAttr.getZ(idx) + delta.z);
+
+        // Update actual mesh geometry (convert world delta to local space)
+        const invWorld = new THREE.Matrix4().copy(ref.mesh.matrixWorld).invert();
+        const localDelta = delta.clone().transformDirection(invWorld);
+        const meshPos = ref.mesh.geometry.getAttribute('position');
+        meshPos.setX(ref.localIndex, meshPos.getX(ref.localIndex) + localDelta.x);
+        meshPos.setY(ref.localIndex, meshPos.getY(ref.localIndex) + localDelta.y);
+        meshPos.setZ(ref.localIndex, meshPos.getZ(ref.localIndex) + localDelta.z);
+        meshPos.needsUpdate = true;
+        ref.mesh.geometry.computeVertexNormals();
+        ref.mesh.geometry.computeBoundingSphere();
+    }
+    posAttr.needsUpdate = true;
+    _vertexDragStartPos = vertexHelperObject.position.clone();
+}
+
+transformControls.addEventListener('change', () => {
+    if (vertexEditActive) onVertexTransformChange();
+});
+
+// ─── Click-to-select (Blender-like) ──────────────────────────────────────────
+renderer.domElement.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    _clickStartPos = { x: e.clientX, y: e.clientY };
+    _clickStartTime = Date.now();
+});
+
+renderer.domElement.addEventListener('pointerup', (e) => {
+    if (e.button !== 0 || !_clickStartPos) return;
+    const dx = e.clientX - _clickStartPos.x;
+    const dy = e.clientY - _clickStartPos.y;
+    const dt = Date.now() - _clickStartTime;
+    _clickStartPos = null;
+
+    // Only treat as a click if minimal movement and short duration
+    if (Math.sqrt(dx * dx + dy * dy) > 5 || dt > 400) return;
+    if (transformControls.dragging) return;
+
+    if (vertexEditActive) {
+        selectVertexAt(e.clientX, e.clientY, e.shiftKey);
+    } else {
+        handleViewportClick(e);
+    }
+});
+
+// ─── Polycount (Mesh Decimation) ─────────────────────────────────────────────
+let _polyDebounce = null;
+
+function decimateGeometry(origGeo, targetPercent) {
+    if (targetPercent >= 100) return origGeo.clone();
+
+    let geo = origGeo.clone();
+
+    // Ensure indexed geometry
+    if (!geo.index) {
+        const pos = geo.getAttribute('position');
+        const indices = [];
+        for (let i = 0; i < pos.count; i++) indices.push(i);
+        geo.setIndex(indices);
+    }
+
+    const totalFaces = geo.index.count / 3;
+    const targetFaces = Math.max(4, Math.floor(totalFaces * targetPercent / 100));
+
+    if (targetFaces >= totalFaces) return geo;
+
+    // Simple edge-collapse decimation
+    const posAttr = geo.getAttribute('position');
+    const idx = Array.from(geo.index.array);
+    let currentFaceCount = totalFaces;
+
+    const removedFaces = new Set();
+
+    while (currentFaceCount > targetFaces && currentFaceCount > 4) {
+        let bestEdge = null;
+        let bestCost = Infinity;
+
+        // Sample random faces to find a cheap edge to collapse
+        const sampleCount = Math.min(50, currentFaceCount);
+        for (let s = 0; s < sampleCount; s++) {
+            let fi;
+            do { fi = Math.floor(Math.random() * totalFaces); } while (removedFaces.has(fi));
+
+            const i0 = idx[fi * 3], i1 = idx[fi * 3 + 1];
+            const dx = posAttr.getX(i0) - posAttr.getX(i1);
+            const dy = posAttr.getY(i0) - posAttr.getY(i1);
+            const dz = posAttr.getZ(i0) - posAttr.getZ(i1);
+            const cost = dx * dx + dy * dy + dz * dz;
+            if (cost < bestCost) {
+                bestCost = cost;
+                bestEdge = [i0, i1, fi];
+            }
+        }
+
+        if (!bestEdge) break;
+
+        const [keep, remove, _] = bestEdge;
+        // Move keep vertex to midpoint
+        posAttr.setXYZ(keep,
+            (posAttr.getX(keep) + posAttr.getX(remove)) / 2,
+            (posAttr.getY(keep) + posAttr.getY(remove)) / 2,
+            (posAttr.getZ(keep) + posAttr.getZ(remove)) / 2
+        );
+
+        // Replace all references to remove with keep, and remove degenerate faces
+        for (let fi2 = 0; fi2 < totalFaces; fi2++) {
+            if (removedFaces.has(fi2)) continue;
+            let changed = false;
+            for (let j = 0; j < 3; j++) {
+                if (idx[fi2 * 3 + j] === remove) {
+                    idx[fi2 * 3 + j] = keep;
+                    changed = true;
+                }
+            }
+            if (changed) {
+                const a = idx[fi2 * 3], b = idx[fi2 * 3 + 1], c = idx[fi2 * 3 + 2];
+                if (a === b || b === c || a === c) {
+                    removedFaces.add(fi2);
+                    currentFaceCount--;
+                }
+            }
+        }
+    }
+
+    // Rebuild index
+    const newIdx = [];
+    for (let fi = 0; fi < totalFaces; fi++) {
+        if (!removedFaces.has(fi)) {
+            newIdx.push(idx[fi * 3], idx[fi * 3 + 1], idx[fi * 3 + 2]);
+        }
+    }
+    geo.setIndex(newIdx);
+    posAttr.needsUpdate = true;
+    geo.computeVertexNormals();
+    geo.computeBoundingSphere();
+    return geo;
+}
+
+function applyPolycount(percent) {
+    if (!currentModel) return;
+    _currentPolyPercent = percent;
+
+    currentModel.traverse((child) => {
+        if (!child.isMesh) return;
+        const origGeo = _originalGeometries.get(child.uuid);
+        if (!origGeo) return;
+
+        const newGeo = decimateGeometry(origGeo, percent);
+        child.geometry.dispose();
+        child.geometry = newGeo;
+    });
+
+    // Re-apply current display mode
+    setDisplayMode(currentDisplayMode);
+
+    const { verts, faces } = getModelCounts();
+    document.getElementById('polycount-info').textContent = `V: ${verts.toLocaleString()} | F: ${Math.round(faces).toLocaleString()}`;
+    updateInfoBar();
+}
+
+function syncPolySliders(value) {
+    document.getElementById('opt-polycount').value = value;
+    document.getElementById('val-polycount').textContent = value + '%';
+    document.getElementById('tb-polycount').value = value;
+    document.getElementById('tb-polyval').textContent = value + '%';
+    clearTimeout(_polyDebounce);
+    _polyDebounce = setTimeout(() => applyPolycount(value), 400);
+}
+document.getElementById('opt-polycount').addEventListener('input', (e) => syncPolySliders(parseInt(e.target.value)));
+document.getElementById('tb-polycount').addEventListener('input', (e) => syncPolySliders(parseInt(e.target.value)));
+
 // ─── Panel toggles ───────────────────────────────────────────────────────────
 const panels = { scene: 'panel-scene', model: 'panel-model', camera: 'panel-camera', light: 'panel-light' };
 let activePanel = null;
@@ -688,9 +1211,7 @@ document.getElementById('btn-light').addEventListener('click', () => togglePanel
 document.getElementById('opt-grid').addEventListener('change', (e) => { gridHelper.visible = e.target.checked; });
 document.getElementById('opt-bg-color').addEventListener('input', (e) => {
     savedBgColor = e.target.value;
-    if (!hasBackgroundImage) {
-        scene.background = new THREE.Color(e.target.value);
-    }
+    if (!hasBackgroundImage) { scene.background = new THREE.Color(e.target.value); }
 });
 document.getElementById('opt-axes').addEventListener('change', (e) => { axesHelper.visible = e.target.checked; });
 document.getElementById('opt-bg-image').addEventListener('change', (e) => {
@@ -707,22 +1228,6 @@ document.getElementById('opt-bg-image').addEventListener('change', (e) => {
 });
 
 // ─── Model options ───────────────────────────────────────────────────────────
-document.getElementById('opt-material').addEventListener('change', (e) => {
-    if (!currentModel) return;
-    const mode = e.target.value;
-    currentModel.traverse((child) => {
-        if (!child.isMesh && !child.isPoints) return;
-        const orig = originalMaterials.get(child.uuid);
-        switch (mode) {
-            case 'original': if (orig) child.material = orig.clone(); break;
-            case 'wireframe': if (child.isMesh) child.material = new THREE.MeshBasicMaterial({ color: 0x00ff88, wireframe: true }); break;
-            case 'normal': if (child.isMesh) child.material = new THREE.MeshNormalMaterial(); break;
-            case 'flat': if (child.isMesh) child.material = new THREE.MeshStandardMaterial({ color: 0x888888, flatShading: true, metalness: 0.2, roughness: 0.8 }); break;
-            case 'points': break;
-        }
-    });
-});
-
 document.getElementById('opt-up-axis').addEventListener('change', (e) => {
     if (!currentModel) return;
     const PI = Math.PI;
@@ -787,15 +1292,13 @@ function updateCamFields() {
 
 for (const id of ['cam-px','cam-py','cam-pz']) {
     document.getElementById(id).addEventListener('change', (e) => {
-        const axis = id.charAt(id.length - 1);
-        camera.position[axis] = parseFloat(e.target.value) || 0;
+        camera.position[id.charAt(id.length - 1)] = parseFloat(e.target.value) || 0;
         orbitControls.update();
     });
 }
 for (const id of ['cam-tx','cam-ty','cam-tz']) {
     document.getElementById(id).addEventListener('change', (e) => {
-        const axis = id.charAt(id.length - 1);
-        orbitControls.target[axis] = parseFloat(e.target.value) || 0;
+        orbitControls.target[id.charAt(id.length - 1)] = parseFloat(e.target.value) || 0;
         orbitControls.update();
     });
 }
@@ -815,17 +1318,15 @@ document.getElementById('opt-light-color').addEventListener('input', (e) => {
     const c = new THREE.Color(e.target.value);
     dirLight.color = c; ambientLight.color = c;
 });
-
 for (const id of ['light-px','light-py','light-pz']) {
     document.getElementById(id).addEventListener('change', (e) => {
-        const axis = id.charAt(id.length - 1);
-        dirLight.position[axis] = parseFloat(e.target.value) || 0;
+        dirLight.position[id.charAt(id.length - 1)] = parseFloat(e.target.value) || 0;
         dirLightHelper.update();
     });
 }
 
-// ─── Focal length (mm) ↔ FOV conversion ─────────────────────────────────────
-const SENSOR_HEIGHT = 24; // 35mm full-frame equivalent
+// ─── Focal length ↔ FOV ──────────────────────────────────────────────────────
+const SENSOR_HEIGHT = 24;
 document.getElementById('opt-focal').addEventListener('input', (e) => {
     const focal = parseFloat(e.target.value);
     document.getElementById('val-focal').textContent = focal;
@@ -841,10 +1342,7 @@ document.getElementById('opt-focal').addEventListener('input', (e) => {
 // ─── Image ratio ─────────────────────────────────────────────────────────────
 document.getElementById('opt-image-ratio').addEventListener('change', (e) => {
     const val = e.target.value;
-    if (val === 'free') {
-        container.style.aspectRatio = '';
-        return;
-    }
+    if (val === 'free') { container.style.aspectRatio = ''; return; }
     const [w, h] = val.split(':').map(Number);
     container.style.aspectRatio = `${w}/${h}`;
     setTimeout(onResize, 50);
@@ -852,51 +1350,66 @@ document.getElementById('opt-image-ratio').addEventListener('change', (e) => {
 
 // ─── View presets ────────────────────────────────────────────────────────────
 document.getElementById('btn-view-front').addEventListener('click', () => {
-    camera.position.set(0, 0, 4);
-    orbitControls.target.set(0, 0, 0);
-    orbitControls.update(); updateCamFields();
+    camera.position.set(0, 0, 4); orbitControls.target.set(0, 0, 0); orbitControls.update(); updateCamFields();
 });
 document.getElementById('btn-view-top').addEventListener('click', () => {
-    camera.position.set(0, 4, 0);
-    orbitControls.target.set(0, 0, 0);
-    orbitControls.update(); updateCamFields();
+    camera.position.set(0, 4, 0); orbitControls.target.set(0, 0, 0); orbitControls.update(); updateCamFields();
 });
 document.getElementById('btn-view-side').addEventListener('click', () => {
-    camera.position.set(4, 0, 0);
-    orbitControls.target.set(0, 0, 0);
-    orbitControls.update(); updateCamFields();
+    camera.position.set(4, 0, 0); orbitControls.target.set(0, 0, 0); orbitControls.update(); updateCamFields();
 });
 
 // ─── Gizmo ───────────────────────────────────────────────────────────────────
 let currentGizmoMode = 'none';
 
 function setGizmoMode(mode) {
+    if (mode === 'vertex') {
+        if (isGaussianSplat || isLargePointCloud) return;
+        if (!isObjectSelected) selectObject();
+        currentGizmoMode = 'vertex';
+        _lastGizmoMode = 'vertex';
+        ['gz-translate', 'gz-rotate', 'gz-scale', 'gz-none', 'gz-vertex'].forEach(id => document.getElementById(id).classList.remove('active'));
+        document.getElementById('gz-vertex').classList.add('active');
+        enterVertexEditMode();
+        updateHints();
+        return;
+    }
+
+    if (vertexEditActive) exitVertexEditMode();
+
+    // Pressing Q or selecting 'none' deselects the object
+    if (mode === 'none') {
+        deselectObject();
+        return;
+    }
+
+    // Pressing T/R/S auto-selects if not already selected
+    if (!isObjectSelected && currentModel && !isGaussianSplat && !isLargePointCloud) {
+        selectObject();
+    }
+
     currentGizmoMode = mode;
-    ['gz-translate', 'gz-rotate', 'gz-scale', 'gz-none'].forEach(id => document.getElementById(id).classList.remove('active'));
+    _lastGizmoMode = mode;
+    ['gz-translate', 'gz-rotate', 'gz-scale', 'gz-none', 'gz-vertex'].forEach(id => document.getElementById(id).classList.remove('active'));
 
     try {
-        if (mode === 'none') {
-            transformControls.detach();
-            document.getElementById('gz-none').classList.add('active');
-        } else {
-            if (currentModel) {
-                transformControls.attach(currentModel);
-                transformControls.setMode(mode);
-            }
-            document.getElementById('gz-' + mode).classList.add('active');
+        if (currentModel && isObjectSelected) {
+            transformControls.attach(currentModel);
+            transformControls.setMode(mode);
         }
+        document.getElementById('gz-' + mode).classList.add('active');
     } catch (err) {
         console.warn('[JS3D] Gizmo error:', err.message);
-        transformControls.detach();
-        document.getElementById('gz-none').classList.add('active');
-        currentGizmoMode = 'none';
+        deselectObject();
     }
+    updateHints();
 }
 
 document.getElementById('gz-translate').addEventListener('click', () => setGizmoMode('translate'));
 document.getElementById('gz-rotate').addEventListener('click', () => setGizmoMode('rotate'));
 document.getElementById('gz-scale').addEventListener('click', () => setGizmoMode('scale'));
 document.getElementById('gz-none').addEventListener('click', () => setGizmoMode('none'));
+document.getElementById('gz-vertex').addEventListener('click', () => setGizmoMode('vertex'));
 document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
     switch (e.key.toLowerCase()) {
@@ -904,30 +1417,69 @@ document.addEventListener('keydown', (e) => {
         case 'r': setGizmoMode('rotate'); break;
         case 's': setGizmoMode('scale'); break;
         case 'q': setGizmoMode('none'); break;
+        case 'v': setGizmoMode('vertex'); break;
+        case 'escape': deselectObject(); break;
     }
 });
 
 // ─── Snapshot ────────────────────────────────────────────────────────────────
-document.getElementById('btn-snapshot').addEventListener('click', captureSnapshot);
+document.getElementById('btn-snapshot').addEventListener('click', () => captureSnapshot());
+
+let _snapshotInProgress = false;
 
 function captureSnapshot(targetWidth, targetHeight) {
-    if (contextLost) return;
+    if (contextLost || _snapshotInProgress) return;
+    _snapshotInProgress = true;
+
+    const prevBg = scene.background;
+    const prevClear = renderer.getClearColor(new THREE.Color());
+    const prevAlpha = renderer.getClearAlpha();
+    const savedVis = {
+        grid: gridHelper.visible,
+        axes: axesHelper.visible,
+        tc: transformControls.visible,
+        dirHelper: dirLightHelper.visible,
+        vertOverlay: vertexOverlay ? vertexOverlay.visible : false,
+        wireOverlays: _wireframeOverlays.map(ov => ov.visible),
+        selBox: selectionBox ? selectionBox.visible : false,
+    };
+
+    const origW = container.clientWidth;
+    const origH = container.clientHeight;
+    const snapW = (typeof targetWidth === 'number' && typeof targetHeight === 'number') ? targetWidth : origW;
+    const snapH = (typeof targetWidth === 'number' && typeof targetHeight === 'number') ? targetHeight : origH;
+
+    const savedMats = new Map();
+
+    function restoreState() {
+        // Restore materials first (most critical)
+        if (savedMats.size > 0 && currentModel) {
+            currentModel.traverse(c => {
+                if (savedMats.has(c.uuid)) c.material = savedMats.get(c.uuid);
+            });
+        }
+        scene.background = prevBg;
+        renderer.setClearColor(prevClear, prevAlpha);
+        gridHelper.visible = savedVis.grid;
+        axesHelper.visible = savedVis.axes;
+        transformControls.visible = savedVis.tc;
+        dirLightHelper.visible = savedVis.dirHelper;
+        if (vertexOverlay) vertexOverlay.visible = savedVis.vertOverlay;
+        if (selectionBox) selectionBox.visible = savedVis.selBox;
+        _wireframeOverlays.forEach((ov, i) => { ov.visible = savedVis.wireOverlays[i] !== undefined ? savedVis.wireOverlays[i] : true; });
+
+        renderer.setSize(origW, origH);
+        if (camera.isPerspectiveCamera) {
+            camera.aspect = origW / origH;
+        } else {
+            const f = 3, a = origW / origH;
+            camera.left = -f * a; camera.right = f * a; camera.top = f; camera.bottom = -f;
+        }
+        camera.updateProjectionMatrix();
+        _snapshotInProgress = false;
+    }
+
     try {
-        const prevBg = scene.background;
-        const prevClear = renderer.getClearColor(new THREE.Color());
-        const prevAlpha = renderer.getClearAlpha();
-        const savedVis = {
-            grid: gridHelper.visible,
-            axes: axesHelper.visible,
-            tc: transformControls.visible,
-            dirHelper: dirLightHelper.visible,
-        };
-
-        const origW = container.clientWidth;
-        const origH = container.clientHeight;
-        const snapW = targetWidth && targetHeight ? targetWidth : origW;
-        const snapH = targetWidth && targetHeight ? targetHeight : origH;
-
         renderer.setSize(snapW, snapH);
         if (camera.isPerspectiveCamera) {
             camera.aspect = snapW / snapH;
@@ -941,6 +1493,10 @@ function captureSnapshot(targetWidth, targetHeight) {
         axesHelper.visible = false;
         transformControls.visible = false;
         dirLightHelper.visible = false;
+        if (vertexOverlay) vertexOverlay.visible = false;
+        if (selectionBox) selectionBox.visible = false;
+        for (const ov of _wireframeOverlays) ov.visible = false;
+
         scene.background = null;
         renderer.setClearColor(0x000000, 0);
 
@@ -949,42 +1505,33 @@ function captureSnapshot(targetWidth, targetHeight) {
 
         let maskData = '', normalData = '';
         if (currentModel) {
-            const savedMats = new Map();
             currentModel.traverse(c => {
                 if ((c.isMesh || c.isPoints) && c.material) {
                     savedMats.set(c.uuid, c.material);
-                    c.material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                    if (c.isPoints) {
+                        c.material = new THREE.PointsMaterial({ color: 0xffffff, size: c.material.size || 1, sizeAttenuation: !!c.material.sizeAttenuation });
+                    } else {
+                        c.material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                    }
                 }
             });
             renderer.render(scene, camera);
             maskData = renderer.domElement.toDataURL('image/png');
 
-            currentModel.traverse(c => { if (c.isMesh) c.material = new THREE.MeshNormalMaterial(); });
+            currentModel.traverse(c => {
+                if (c.isMesh) c.material = new THREE.MeshNormalMaterial();
+            });
             renderer.render(scene, camera);
             normalData = renderer.domElement.toDataURL('image/png');
-
-            currentModel.traverse(c => { if (savedMats.has(c.uuid)) c.material = savedMats.get(c.uuid); });
         }
 
-        scene.background = prevBg;
-        renderer.setClearColor(prevClear, prevAlpha);
-        gridHelper.visible = savedVis.grid;
-        axesHelper.visible = savedVis.axes;
-        transformControls.visible = savedVis.tc;
-        dirLightHelper.visible = savedVis.dirHelper;
+        restoreState();
 
-        renderer.setSize(origW, origH);
-        if (camera.isPerspectiveCamera) {
-            camera.aspect = origW / origH;
-        } else {
-            const f = 3, a = origW / origH;
-            camera.left = -f * a; camera.right = f * a; camera.top = f; camera.bottom = -f;
-        }
-        camera.updateProjectionMatrix();
-
+        const { verts, faces } = getModelCounts();
         window.parent.postMessage({
             type: 'js3d_snapshot', image: imageData, mask: maskData, normal: normalData,
             width: snapW, height: snapH,
+            polycount: { verts, faces: Math.round(faces), percent: _currentPolyPercent },
             camera: {
                 cameraType: camera.isPerspectiveCamera ? 'perspective' : 'orthographic',
                 fov: camera.fov || 50,
@@ -995,10 +1542,11 @@ function captureSnapshot(targetWidth, targetHeight) {
         }, '*');
     } catch (err) {
         console.error('[JS3D] Snapshot error:', err);
+        restoreState();
     }
 }
 
-// ─── Auto-snapshot on interaction changes ────────────────────────────────────
+// ─── Auto-snapshot ───────────────────────────────────────────────────────────
 let _autoSnapTimer = null;
 function scheduleAutoSnapshot() {
     clearTimeout(_autoSnapTimer);
@@ -1036,6 +1584,7 @@ function animate() {
     if (contextLost) return;
     try {
         orbitControls.update();
+        if (selectionBox) selectionBox.update();
         renderer.render(scene, camera);
         if (++frameCount % 30 === 0) updateCamFields();
     } catch (err) {

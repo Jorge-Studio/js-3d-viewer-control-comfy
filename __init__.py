@@ -21,8 +21,11 @@ try:
     from .nodes.gaussian_to_mesh import NODE_DISPLAY_NAME_MAPPINGS as _gmn
     gs_mesh_nodes = _gm
     gs_mesh_names = _gmn
+    print("[JS3D] Gaussian-to-Mesh node loaded successfully")
 except Exception as e:
-    print(f"[JS3D] Gaussian-to-Mesh node unavailable (install open3d & pymeshlab): {e}")
+    import traceback
+    print(f"[JS3D] WARNING: Gaussian-to-Mesh node failed to load: {e}")
+    traceback.print_exc()
 
 NODE_CLASS_MAPPINGS = {
     **load_nodes,

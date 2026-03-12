@@ -1,12 +1,12 @@
 {
-  "last_node_id": 4,
-  "last_link_id": 3,
+  "last_node_id": 3,
+  "last_link_id": 2,
   "nodes": [
     {
       "id": 1,
       "type": "JS3D_Load3DController",
       "pos": [50, 50],
-      "size": [420, 750],
+      "size": [520, 900],
       "flags": {},
       "order": 0,
       "mode": 0,
@@ -15,7 +15,7 @@
         {"name": "image", "type": "IMAGE", "links": [1], "slot_index": 0},
         {"name": "mask", "type": "MASK", "links": [], "slot_index": 1},
         {"name": "mesh_path", "type": "STRING", "links": [], "slot_index": 2},
-        {"name": "normal_map", "type": "IMAGE", "links": [2], "slot_index": 3},
+        {"name": "normal_map", "type": "IMAGE", "links": [], "slot_index": 3},
         {"name": "camera_info", "type": "STRING", "links": [], "slot_index": 4},
         {"name": "width", "type": "INT", "links": [], "slot_index": 5},
         {"name": "height", "type": "INT", "links": [], "slot_index": 6}
@@ -27,8 +27,8 @@
     {
       "id": 2,
       "type": "PreviewImage",
-      "pos": [550, 50],
-      "size": [400, 350],
+      "pos": [650, 50],
+      "size": [400, 400],
       "flags": {},
       "order": 1,
       "mode": 0,
@@ -37,35 +37,18 @@
       ],
       "outputs": [],
       "properties": {"Node name for S&R": "PreviewImage"},
-      "widgets_values": [],
-      "_meta": {"title": "Rendered Snapshot"}
+      "_meta": {"title": "Rendered Output"}
     },
     {
       "id": 3,
-      "type": "PreviewImage",
-      "pos": [550, 450],
-      "size": [400, 350],
+      "type": "SaveImage",
+      "pos": [650, 500],
+      "size": [400, 400],
       "flags": {},
       "order": 2,
       "mode": 0,
       "inputs": [
         {"name": "images", "type": "IMAGE", "link": 2}
-      ],
-      "outputs": [],
-      "properties": {"Node name for S&R": "PreviewImage"},
-      "widgets_values": [],
-      "_meta": {"title": "Normal Map"}
-    },
-    {
-      "id": 4,
-      "type": "SaveImage",
-      "pos": [1000, 50],
-      "size": [400, 400],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [
-        {"name": "images", "type": "IMAGE", "link": 3}
       ],
       "outputs": [],
       "properties": {"Node name for S&R": "SaveImage"},
@@ -75,13 +58,16 @@
   ],
   "links": [
     [1, 1, 0, 2, 0, "IMAGE"],
-    [2, 1, 3, 3, 0, "IMAGE"],
-    [3, 1, 0, 4, 0, "IMAGE"]
+    [2, 1, 0, 3, 0, "IMAGE"]
   ],
-  "groups": [],
+  "groups": [
+    {
+      "title": "View & Render — Load any 3D file, position it, and get a clean render",
+      "bounding": [30, -30, 1060, 950],
+      "color": "#3f789e"
+    }
+  ],
   "config": {},
-  "extra": {
-    "ds": {"scale": 0.8, "offset": [0, 0]}
-  },
+  "extra": {"ds": {"scale": 0.8, "offset": [50, 50]}},
   "version": 0.4
 }

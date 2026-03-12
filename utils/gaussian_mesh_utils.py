@@ -182,9 +182,15 @@ def simplify_point_cloud(positions, colours, ratio=0.1, method="voxel"):
         extent = np.max(bbox.get_extent())
         n_current = len(positions)
         n_target = max(1000, int(n_current * ratio))
-        voxel_size = extent * (n_current / n_target) ** (1.0 / 3.0) * 0.5
-        voxel_size = max(voxel_size, extent * 0.001)
+        voxel_size = extent / (n_target ** (1.0 / 3.0))
+        voxel_size = max(voxel_size, extent * 0.0001)
         pcd = pcd.voxel_down_sample(voxel_size)
+        if len(pcd.points) < 1000:
+            indices = np.random.choice(len(positions), size=min(n_target, len(positions)), replace=False)
+            pcd_fallback = o3d.geometry.PointCloud()
+            pcd_fallback.points = o3d.utility.Vector3dVector(positions[indices])
+            pcd_fallback.colors = o3d.utility.Vector3dVector(colours[indices])
+            pcd = pcd_fallback
 
     return pcd
 

@@ -1,0 +1,168 @@
+{
+  "last_node_id": 6,
+  "last_link_id": 6,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "JS3D_Load3DController",
+      "pos": [50, 50],
+      "size": [520, 900],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "image", "type": "IMAGE", "links": [], "slot_index": 0},
+        {"name": "mask", "type": "MASK", "links": [], "slot_index": 1},
+        {"name": "mesh_path", "type": "STRING", "links": [1], "slot_index": 2},
+        {"name": "normal_map", "type": "IMAGE", "links": [], "slot_index": 3},
+        {"name": "camera_info", "type": "STRING", "links": [], "slot_index": 4},
+        {"name": "width", "type": "INT", "links": [], "slot_index": 5},
+        {"name": "height", "type": "INT", "links": [], "slot_index": 6}
+      ],
+      "properties": {"Node name for S&R": "JS3D_Load3DController"},
+      "widgets_values": ["none", 1024, 1024, ""],
+      "_meta": {"title": "1. Load Gaussian Splat PLY"}
+    },
+    {
+      "id": 2,
+      "type": "JS3D_GaussianToMesh",
+      "pos": [650, 50],
+      "size": [400, 500],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "mesh_path", "type": "STRING", "link": 1}
+      ],
+      "outputs": [
+        {"name": "mesh_path", "type": "STRING", "links": [2, 3], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "JS3D_GaussianToMesh"},
+      "widgets_values": ["", 0.1, "voxel", 8, 0.1, 30, true, true, 4096, "obj", "gs_mesh"],
+      "_meta": {"title": "2. Convert to Mesh"}
+    },
+    {
+      "id": 3,
+      "type": "JS3D_Preview3D",
+      "pos": [1130, 50],
+      "size": [520, 500],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "mesh_path", "type": "STRING", "link": 2},
+        {"name": "camera_info", "type": "STRING", "link": null}
+      ],
+      "outputs": [],
+      "properties": {"Node name for S&R": "JS3D_Preview3D"},
+      "widgets_values": [""],
+      "_meta": {"title": "3. Quick Preview"}
+    },
+    {
+      "id": 4,
+      "type": "JS3D_ExportFormat",
+      "pos": [1130, 600],
+      "size": [350, 180],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {"name": "mesh_path", "type": "STRING", "link": 3}
+      ],
+      "outputs": [
+        {"name": "exported_path", "type": "STRING", "links": [], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "JS3D_ExportFormat"},
+      "widgets_values": ["", "glb", "converted_mesh"],
+      "_meta": {"title": "4. Export / Download"}
+    },
+    {
+      "id": 5,
+      "type": "Reroute",
+      "pos": [650, 700],
+      "size": [75, 26],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "outputs": [{"name": "", "type": "*", "links": null}],
+      "_meta": {"title": "After conversion: refresh browser, select converted mesh below"}
+    },
+    {
+      "id": 6,
+      "type": "JS3D_Load3DController",
+      "pos": [50, 1050],
+      "size": [520, 900],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "image", "type": "IMAGE", "links": [4, 5], "slot_index": 0},
+        {"name": "mask", "type": "MASK", "links": [6], "slot_index": 1},
+        {"name": "mesh_path", "type": "STRING", "links": [], "slot_index": 2},
+        {"name": "normal_map", "type": "IMAGE", "links": [], "slot_index": 3},
+        {"name": "camera_info", "type": "STRING", "links": [], "slot_index": 4},
+        {"name": "width", "type": "INT", "links": [], "slot_index": 5},
+        {"name": "height", "type": "INT", "links": [], "slot_index": 6}
+      ],
+      "properties": {"Node name for S&R": "JS3D_Load3DController"},
+      "widgets_values": ["none", 1024, 1024, ""],
+      "_meta": {"title": "5. Manipulate Converted Mesh (gizmos, display modes, vertex edit)"}
+    },
+    {
+      "id": 7,
+      "type": "PreviewImage",
+      "pos": [650, 1050],
+      "size": [400, 400],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 4}
+      ],
+      "outputs": [],
+      "properties": {"Node name for S&R": "PreviewImage"},
+      "_meta": {"title": "Render Preview"}
+    },
+    {
+      "id": 8,
+      "type": "SaveImage",
+      "pos": [650, 1500],
+      "size": [400, 300],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 5}
+      ],
+      "outputs": [],
+      "properties": {"Node name for S&R": "SaveImage"},
+      "widgets_values": ["mesh_render"],
+      "_meta": {"title": "Save Render"}
+    }
+  ],
+  "links": [
+    [1, 1, 2, 2, 0, "STRING"],
+    [2, 2, 0, 3, 0, "STRING"],
+    [3, 2, 0, 4, 0, "STRING"],
+    [4, 6, 0, 7, 0, "IMAGE"],
+    [5, 6, 0, 8, 0, "IMAGE"],
+    [6, 6, 1, 8, 0, "MASK"]
+  ],
+  "groups": [
+    {
+      "title": "Step 1: Convert Gaussian Splat to Mesh",
+      "bounding": [30, -30, 1660, 850],
+      "color": "#7e3f9e"
+    },
+    {
+      "title": "Step 2: Manipulate the Mesh (select converted file, use gizmos/display modes/vertex edit/polycount)",
+      "bounding": [30, 980, 1060, 880],
+      "color": "#3f9e6b"
+    }
+  ],
+  "config": {},
+  "extra": {"ds": {"scale": 0.5, "offset": [50, 50]}},
+  "version": 0.4
+}
